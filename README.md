@@ -2,6 +2,8 @@
 
 **Practice forward-deployed engineering against simulated customer environments.**
 
+![Demo: a full support-triage playthrough — picker, briefing, turn loop with stakeholder dialogue, surprise events firing, debrief, and back to the picker](docs/demo.gif)
+
 fieldwork is a self-hosted training simulator for FDE-style work: deploying
 AI-powered systems against messy, realistic customer environments. Each scenario
 drops you into a simulated company with ambiguous requirements, incomplete docs,
@@ -173,7 +175,6 @@ Not yet built (see [TODO.md](TODO.md)):
 - SQLite session persistence (to replace the single-writer JSON file store)
 - Action log summarization for long runs (prompt bloats past ~20 turns)
 - Cross-session history and analytics
-- Demo GIF in the README
 
 ## Contributing
 

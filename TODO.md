@@ -22,12 +22,6 @@ Durable, cross-session list of remaining work. Ordered by leverage.
       from the visible line entirely (the retry is meant to be silent)
       or add a tooltip like "engine retried internally for a clean
       response — no action needed."
-- [ ] **Demo GIF** in the README. Clean v2 draft at
-      `%TEMP%/fieldwork-demo-v2/fieldwork-demo.gif` (15 frames captured by
-      a fresh-eyes Sonnet playthrough on the patched build, 3076 KB at
-      960px). Needs review and copy to `apps/web/public/`. The v2 frames
-      include the launch_vs_testing_conflict and spam_reroute surprises
-      firing, the post-debrief flow, and the reload-restore in action.
 
 ## Engine
 
@@ -140,3 +134,13 @@ re-open them.
 - [x] **Migrate `pnpm lint` to flat-config ESLint CLI** — `next lint` was
       deprecated and mutating `tsconfig.json` as a side effect. Shipped in
       PR #15.
+- [x] **Inner Claude contract guard** — lenient normalize + retry-on-malformed
+      + tightened CONTRACT prompt. Shipped in PR #16. Verified by v2
+      fresh-eyes playthrough: 0 contract errors out of 10 turns.
+- [x] **Session URL persistence** — `?session=<id>` in the URL, restore
+      via new GET `/api/session/[id]`, fall back to fresh start on 404.
+      Shipped in PR #17. Verified by v2 fresh-eyes playthrough: mid-scenario
+      reload preserved turn counter, cost, trust, objectives, inbox.
+- [x] **Demo GIF in README** — `docs/demo.gif`, 15 frames from a fresh-eyes
+      Sonnet playthrough on the patched build. Both surprise events visible,
+      reload-restore visible, debrief and back-nav visible.
