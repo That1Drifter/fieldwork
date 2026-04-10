@@ -34,3 +34,7 @@ pnpm-debug.log*
 *.sqlite-journal
 apps/web/data/
 data/sessions.json
+
+# Local-only
+CLAUDE.md
+resume-claude.bat
