@@ -395,28 +395,48 @@ export async function callInnerClaude(params: {
   const firstCost = computeCost(firstCall.model, firstUsage);
   const firstTruncated = firstCall.stop_reason === 'max_tokens';
 
+  // Two retry triggers, both recoverable: (a) the response was truncated at
+  // max_tokens, (b) the tool input came back malformed (e.g. Haiku
+  // occasionally emits stakeholder_messages as a stringified blob containing
+  // the sibling fields, leaving visible_effects missing at the top level).
+  // Both fail one in five-ish on the cheap model and almost never recur on
+  // retry, so a single re-call beats the alternatives (salvage parsing,
+  // hard rejection).
+  let retryReason: 'truncated' | 'malformed' | null = firstTruncated
+    ? 'truncated'
+    : null;
+
   if (!firstTruncated) {
     const input = extractToolInput(firstCall);
     const response = normalizeInnerClaudeResponse(input);
-    if (!response) {
-      throw new Error('inner claude tool call did not match contract');
+    if (response) {
+      return {
+        response,
+        modelUsed: firstCall.model,
+        rawText: JSON.stringify(input),
+        usedCache,
+        retried: false,
+        tier,
+        costUsd: firstCost,
+        usage: {
+          input: firstUsage.input_tokens ?? 0,
+          output: firstUsage.output_tokens ?? 0,
+          cache_write: firstUsage.cache_creation_input_tokens ?? 0,
+          cache_read: firstUsage.cache_read_input_tokens ?? 0,
+        },
+      };
     }
-    return {
-      response,
-      modelUsed: firstCall.model,
-      rawText: JSON.stringify(input),
-      usedCache,
-      retried: false,
-      tier,
-      costUsd: firstCost,
-      usage: {
-        input: firstUsage.input_tokens ?? 0,
-        output: firstUsage.output_tokens ?? 0,
-        cache_write: firstUsage.cache_creation_input_tokens ?? 0,
-        cache_read: firstUsage.cache_read_input_tokens ?? 0,
-      },
-    };
+    console.error(
+      '[inner-claude] first tool input rejected by normalize, retrying:',
+      JSON.stringify(input),
+    );
+    retryReason = 'malformed';
   }
+
+  const retryHint =
+    retryReason === 'truncated'
+      ? '\n\nIMPORTANT: your previous response hit the token limit. Keep every prose field concise (visible_effects under 150 words, stakeholder messages under 80 words each) so the tool call fits the budget.'
+      : '\n\nIMPORTANT: your previous tool call was malformed — fields like `stakeholder_messages` and `visible_effects` must be emitted as separate top-level keys in the tool input, NOT packed into a single stringified blob. Re-emit the tool call with each field at the top level of the input object.';
 
   const retry = await client.messages.create(
     {
@@ -428,9 +448,7 @@ export async function callInnerClaude(params: {
       messages: [
         {
           role: 'user',
-          content:
-            userMessage +
-            '\n\nIMPORTANT: your previous response hit the token limit. Keep every prose field concise (visible_effects under 150 words, stakeholder messages under 80 words each) so the tool call fits the budget.',
+          content: userMessage + retryHint,
         },
       ],
     },
@@ -448,6 +466,7 @@ export async function callInnerClaude(params: {
   const retryInput = extractToolInput(retry);
   const retryResponse = normalizeInnerClaudeResponse(retryInput);
   if (!retryResponse) {
+    console.error('[inner-claude] retry tool input rejected by normalize:', JSON.stringify(retryInput));
     throw new Error('inner claude retry tool call did not match contract');
   }
 
