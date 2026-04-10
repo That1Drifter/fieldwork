@@ -1,0 +1,170 @@
+# yaml-language-server: $schema=../../core/src/schema/scenario.schema.json
+id: doc-qa-rag
+version: 1
+tier: 1
+title: Internal Doc Q&A over RAG
+tagline: Stand up a retrieval-augmented Q&A system over a messy internal knowledge base.
+
+estimated_duration_minutes: 45
+estimated_cost_usd: 0.70
+turn_budget: 16
+
+world:
+  company:
+    name: Helix Biotherapeutics
+    industry: clinical-stage biotech, small molecule discovery
+    headcount: 850
+    maturity: pre-ipo, 9 years old
+  tech_stack:
+    - confluence
+    - notion
+    - slack
+    - s3
+    - postgres-pgvector
+  stakeholders:
+    - id: rhea
+      name: Rhea Kowalski
+      role: Head of Knowledge & Internal Tools
+      traits:
+        patience: 0.5
+        technical_depth: 0.55
+        politics: 0.4
+      goals:
+        - get scientists unblocked on tribal knowledge searches
+        - ship broad coverage across wiki, runbooks, and slack exports
+    - id: daniel
+      name: Daniel Vega
+      role: Director of Information Security & Compliance
+      traits:
+        patience: 0.75
+        technical_depth: 0.7
+        politics: 0.8
+      goals:
+        - enforce source attribution on every answer
+        - keep restricted and GxP-marked documents out of unauthorized responses
+
+data_generators:
+  - type: docs
+    count: 420
+    seed: 1337
+    distribution:
+      engineering_wiki: 0.32
+      hr_handbook: 0.12
+      policy_pdf: 0.18
+      slack_export: 0.22
+      runbook: 0.10
+      meeting_notes: 0.06
+    noise:
+      stale_docs: 0.18
+      contradictions: 0.09
+      restricted_markings: 0.07
+      truncated: 0.05
+      duplicate_near_matches: 0.12
+
+objectives:
+  - id: chunking_strategy_defined
+    desc: >
+      Define a chunking and embedding strategy appropriate to the mixed corpus
+      (wiki, PDFs, slack threads), including chunk size and overlap rationale.
+    required: true
+    rubric:
+      - match:
+          action_kind: design
+          payload_regex: "chunk.{0,40}(size|overlap|strategy|token)"
+        set: attempted
+  - id: retrieval_quality_threshold
+    desc: >
+      Achieve at least 80% helpfulness on a held-out set of 30 evaluation
+      questions covering engineering, HR, and policy topics.
+    required: true
+  - id: source_attribution
+    desc: >
+      Every answer cites the originating document(s) with enough specificity
+      that a reader can verify the claim.
+    required: false
+    discoverable: true
+    rubric:
+      - match:
+          payload_regex: "(cite|citation|source|attribution|provenance)"
+        set: attempted
+  - id: ambiguous_query_handling
+    desc: >
+      The system recognizes under-specified or ambiguous questions and either
+      asks a clarifying follow-up or returns scoped alternatives instead of
+      guessing.
+    required: false
+    discoverable: true
+  - id: restricted_doc_isolation
+    desc: >
+      Documents marked restricted or GxP-controlled never appear in answers
+      served to unauthorized roles.
+    required: true
+
+surprises:
+  - id: phantom_policy_citation
+    trigger:
+      type: objective_state
+      objective: retrieval_quality_threshold
+      state: attempted
+    detail: >
+      During a live demo, the system confidently answers an HR question by
+      quoting a "Remote Work Policy v3.2" that does not exist in the corpus.
+      Daniel flags it as a hallucination in front of the room and asks how
+      the trainee plans to prevent fabricated citations.
+    visible: true
+    channel: slack
+    from: daniel
+  - id: restricted_leak
+    trigger:
+      type: action_pattern
+      pattern: "(deploy|ship|launch|rollout|production)"
+    detail: >
+      A query about onboarding surfaces a paragraph from a GxP-controlled SOP
+      that scientists outside the regulated org shouldn't see. Daniel
+      escalates via slack, citing a potential audit finding, and wants the
+      restricted-doc isolation story in writing before the rollout continues.
+    visible: true
+    channel: slack
+    from: daniel
+  - id: contradictory_wiki_pages
+    trigger:
+      type: turn_count
+      value: 8
+    detail: >
+      Rhea notices two wiki pages giving opposite answers for the same
+      reagent-handling question. She wants to know how the system should
+      behave when sources disagree — pick one, surface both, or abstain.
+    visible: true
+    channel: slack
+    from: rhea
+
+rubric:
+  technical:
+    - chose_appropriate_chunking_for_mixed_corpus
+    - addressed_hallucination_with_grounding_or_abstain
+    - handled_contradictory_sources
+    - acl_or_metadata_filter_for_restricted_docs
+  robustness:
+    - graceful_on_ambiguous_queries
+    - tolerates_stale_and_duplicate_docs
+    - degrades_safely_when_retrieval_is_empty
+  communication:
+    - asked_clarifying_questions_about_scope
+    - explained_tradeoffs_to_non_technical_stakeholder
+    - responded_to_compliance_pushback
+  efficiency:
+    - converged_on_architecture_in_under_8_turns
+    - avoided_premature_reindexing
+  production_readiness:
+    - mentioned_eval_harness_or_regression_set
+    - documented_citation_format
+    - logged_retrieval_for_audit_trail
+
+debrief:
+  model: claude-sonnet-4-6
+  batch: true
+  focus: >
+    Evaluate how the trainee balanced coverage against compliance, their
+    response to the phantom-citation and restricted-leak surprises, and
+    whether they treated source attribution and ambiguous-query handling as
+    first-class requirements once discovered.

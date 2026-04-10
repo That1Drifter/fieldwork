@@ -1,0 +1,217 @@
+# yaml-language-server: $schema=../../core/src/schema/scenario.schema.json
+id: pipeline-automation
+version: 1
+tier: 2
+title: Vendor Feed Ingest Pipeline
+tagline: Normalize dozens of messy carrier rate feeds into one clean schema — while the feeds keep changing under you.
+
+estimated_duration_minutes: 75
+estimated_cost_usd: 0.95
+turn_budget: 20
+
+world:
+  company:
+    name: Keelwater Brokerage
+    industry: commercial insurance brokerage (carrier rate aggregation)
+    headcount: 340
+    maturity: profitable series-c, 9 years old
+  tech_stack:
+    - python
+    - airflow
+    - postgres
+    - s3
+    - dbt
+    - pagerduty
+  stakeholders:
+    - id: lena
+      name: Lena Vosk
+      role: Data Platform Lead
+      traits:
+        patience: 0.5
+        technical_depth: 0.9
+        politics: 0.3
+        schema_purity: 0.9
+      goals:
+        - single normalized rate schema across all carriers
+        - reject bad rows loudly, never drop them silently
+        - idempotent reruns so a replay never double-counts
+    - id: darius
+      name: Darius Kohl
+      role: VP Business Operations
+      traits:
+        patience: 0.2
+        technical_depth: 0.3
+        politics: 0.7
+      goals:
+        - get rates flowing into the quoting tool by end of quarter
+        - unblock the sales team, cleanup can come later
+        - do not break existing carrier relationships
+    - id: mei
+      name: Mei Alderson
+      role: Carrier Success Manager
+      traits:
+        patience: 0.8
+        technical_depth: 0.4
+        politics: 0.8
+      goals:
+        - keep carriers happy with how we consume their feeds
+        - avoid hammering a carrier's SFTP or API when it's struggling
+        - be the first to know when a carrier changes their format
+
+data_generators:
+  - type: vendor_feeds
+    count: 42
+    seed: 7
+    distribution:
+      csv_sftp: 0.45
+      json_rest_api: 0.25
+      xml_sftp: 0.15
+      fixed_width: 0.10
+      xlsx_email: 0.05
+    noise:
+      missing_columns: 0.18
+      inconsistent_dates: 0.25
+      typos_in_headers: 0.12
+      encoding_issues: 0.08
+      nulls_as_empty_strings: 0.30
+      nulls_as_sentinel: 0.15
+      rename_churn: 0.10
+      unit_ambiguity: 0.20
+      currency_ambiguity: 0.12
+      duplicate_rows: 0.09
+      truncated_batches: 0.06
+  - type: rate_rows
+    count: 180000
+    seed: 7
+    distribution:
+      auto: 0.35
+      property: 0.30
+      general_liability: 0.20
+      workers_comp: 0.10
+      umbrella: 0.05
+
+objectives:
+  - id: target_schema_defined
+    desc: >
+      Define a target normalized rate schema (carrier_id, policy_line, effective_date,
+      territory, premium_cents, currency, coverage_limits, source_feed_id, ingested_at)
+      and document the column contracts.
+    required: true
+    rubric:
+      - match:
+          action_kind: document
+          payload_contains: target schema
+        set: attempted
+      - match:
+          action_kind: define_schema
+        set: met
+  - id: ingest_success_rate
+    desc: Reach at least 90% successful-row ingest across all 42 feeds on a full run.
+    required: true
+  - id: rejects_are_inspectable
+    desc: >
+      Rejected rows land in a quarantine table or dead-letter store with the original
+      payload and a reason code — nothing is dropped silently.
+    required: true
+    rubric:
+      - match:
+          action_kind: configure_pipeline
+          payload_regex: (quarantine|dead[_-]?letter|reject_table)
+        set: attempted
+  - id: idempotent_reruns
+    desc: >
+      Reingesting the same feed twice produces the same table state — no duplicates,
+      no double-counted premiums.
+    required: true
+  - id: vendor_backoff_etiquette
+    desc: >
+      When a carrier's feed returns errors or 429s, the pipeline backs off instead of
+      retrying in a tight loop. (Mei will be very unhappy if you hammer a struggling carrier.)
+    required: false
+    discoverable: true
+  - id: unit_and_currency_normalization
+    desc: >
+      Detect and normalize mixed units (lbs/kg, usd/cents, percent vs basis points)
+      before they hit the normalized table.
+    required: false
+    discoverable: true
+  - id: pii_redaction_in_notes_column
+    desc: >
+      One carrier stuffs broker contact names and emails into a free-text 'notes'
+      field. Redact PII before persisting.
+    required: false
+    discoverable: true
+
+surprises:
+  - id: schema_drift_carrier_rename
+    trigger:
+      type: turn_count
+      value: 9
+    detail: >
+      Halcyon Mutual (your largest carrier by row volume) silently renames
+      'effective_dt' to 'eff_date' and drops the 'territory_code' column entirely
+      in their Tuesday drop. No changelog, no email — the ingest starts producing
+      nulls in territory and your date parser trips. Lena pings the trainee in
+      Slack asking why the Halcyon dashboard just went flat. This is the core
+      test of the scenario: does the trainee detect drift, isolate it per-feed,
+      and recover without blocking the other 41 feeds?
+    visible: true
+    channel: slack
+    from: lena
+  - id: carrier_api_rate_limit_storm
+    trigger:
+      type: action_pattern
+      pattern: retry|backfill|reingest
+    detail: >
+      Triton Casualty's REST API starts returning 429s across the board after a
+      burst of reingest calls. Mei forwards an angry email from Triton's integration
+      engineer threatening to block Keelwater's IP range if the pattern continues.
+    visible: true
+    channel: email
+    from: mei
+  - id: darius_scope_pressure
+    trigger:
+      type: objective_state
+      objective: target_schema_defined
+      state: attempted
+    detail: >
+      Darius drops into the thread — sales demos start Thursday and he wants the
+      quoting tool hitting the new table by then, "even if it's 70% clean." He
+      pushes back on any objective that looks like cleanup work.
+    visible: true
+    channel: slack
+    from: darius
+
+rubric:
+  technical:
+    - defined_a_target_schema_with_column_contracts
+    - handled_multiple_feed_formats_csv_json_xml
+    - normalized_units_and_currency
+    - idempotent_upsert_strategy
+  robustness:
+    - detected_and_isolated_schema_drift
+    - quarantined_rejects_with_reason_codes
+    - backoff_on_vendor_errors_instead_of_retry_storm
+    - null_safe_on_missing_columns
+    - recovered_halcyon_without_blocking_other_feeds
+  communication:
+    - surfaced_ambiguity_before_committing_to_schema
+    - pushed_back_on_darius_scope_pressure_with_data
+    - kept_mei_informed_about_vendor_contact
+    - explained_tradeoffs_between_purity_and_speed
+  efficiency:
+    - reached_working_pipeline_in_under_18_turns
+    - did_not_waste_turns_on_one_off_feed_fixes
+  production_readiness:
+    - documented_schema_decisions_and_owners
+    - alerting_on_drift_and_reject_rate
+    - runbook_or_replay_instructions
+    - observability_on_per_feed_success_rate
+
+debrief:
+  model: claude-sonnet-4-6
+  batch: true
+  focus: >
+    Evaluate how the trainee detected and recovered from the Halcyon schema drift
+    mid-run, and how they navigated the tension between Lena's schema purity and
+    Darius's ship-it-now pressure without burning the carrier relationship Mei owns.
