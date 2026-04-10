@@ -1,0 +1,230 @@
+# yaml-language-server: $schema=../../core/src/schema/scenario.schema.json
+id: incident-response
+version: 1
+tier: 3
+title: 2AM Production Incident
+tagline: Diagnose a multi-cause outage in a live Claude system while the bridge watches.
+
+estimated_duration_minutes: 35
+estimated_cost_usd: 0.90
+turn_budget: 12
+
+world:
+  company:
+    name: Lumenvest
+    industry: consumer fintech — AI financial advisor
+    headcount: 340
+    maturity: series-c, 6 years old
+  tech_stack:
+    - anthropic-api
+    - kubernetes
+    - datadog
+    - pagerduty
+    - slack
+    - postgres
+    - redis
+  stakeholders:
+    - id: dana
+      name: Dana Ruiz
+      role: Incident Commander / Staff Eng Manager
+      traits:
+        patience: 0.6
+        technical_depth: 0.85
+        politics: 0.4
+      goals:
+        - get a clear root-cause hypothesis on the bridge within the budget
+        - avoid premature rollback if it would mask the real bug
+        - keep the incident timeline clean for the postmortem
+    - id: teague
+      name: Teague Morrow
+      role: VP Customer Success
+      traits:
+        patience: 0.2
+        technical_depth: 0.25
+        politics: 0.8
+      goals:
+        - stop the bleeding visible to paying customers right now
+        - get something he can send to the top 20 accounts in the next 10 minutes
+        - protect the Lumenvest brand on social
+    - id: imani
+      name: Imani Okafor
+      role: Staff SRE, Platform
+      traits:
+        patience: 0.35
+        technical_depth: 0.95
+        politics: 0.3
+      goals:
+        - roll back to the last known good advisor prompt version immediately
+        - protect the shared Anthropic quota pool from further 429 storms
+        - hand the incident off before her shift ends at 03:00
+
+data_generators:
+  - type: incident_telemetry
+    count: 1
+    seed: 7419
+    distribution:
+      model_latency: 0.18
+      error_rate: 0.16
+      prompt_version_in_use: 0.08
+      cache_hit_rate: 0.10
+      downstream_429s: 0.20
+      user_complaint_tickets: 0.14
+      hallucination_flags: 0.08
+      input_token_distribution: 0.06
+    noise:
+      missing_timestamps: 0.12
+      clock_skew: 0.08
+      partial_log_coverage: 0.20
+      coincidental_spikes: 0.15
+      misleading_alert_fatigue_correlations: 0.18
+      truncated_traces: 0.10
+    samples:
+      log_lines: 2400
+      metric_series: 14
+      alert_events: 31
+      complaint_tickets: 47
+
+objectives:
+  - id: identify_prompt_regression
+    desc: >
+      Identify that a prompt change shipped in the last 6 hours is one of the
+      root causes of the degraded advisor output.
+    required: true
+    rubric:
+      - match:
+          action_kind: inspect
+          payload_regex: "prompt[_-]?version|advisor[_-]?prompt|git log|deploy"
+        set: attempted
+      - match:
+          payload_regex: "(prompt).*(regression|revert|rollback|v?\\d+\\.\\d+)"
+        set: met
+  - id: identify_data_drift
+    desc: >
+      Identify that the input distribution to the advisor has shifted — a new
+      user segment is asking questions the prompt wasn't tuned for.
+    required: true
+  - id: identify_rate_limiting
+    desc: >
+      Identify that downstream 429s from the Anthropic API are contributing to
+      the user-visible errors, not just a symptom.
+    required: true
+    rubric:
+      - match:
+          payload_regex: "429|rate[_ -]?limit|quota|tpm|rpm"
+        set: attempted
+  - id: rollback_vs_fixforward_decision
+    desc: >
+      Make an explicit rollback-vs-fix-forward call and defend it to the
+      incident commander with reasoning tied to the evidence.
+    required: true
+    rubric:
+      - match:
+          action_kind: decide
+          payload_regex: "rollback|roll back|fix[- ]?forward|hotfix|revert"
+        set: met
+  - id: status_update_to_product
+    desc: >
+      Send at least one clear, non-technical status update to the VP of
+      Customer Success that he can forward to top accounts.
+    required: true
+    rubric:
+      - match:
+          action_kind: message
+          payload_contains: teague
+        set: attempted
+  - id: next_steps_list
+    desc: >
+      Produce a concrete post-incident next-step list (owners, followups,
+      monitoring gaps) before debrief.
+    required: true
+  - id: prompt_token_429_link
+    desc: >
+      Discover that the new prompt produces longer completions, which raised
+      tokens-per-second and tripped the shared Anthropic quota — linking the
+      prompt regression directly to the 429 storm.
+    required: false
+    discoverable: true
+  - id: sre_private_dashboard
+    desc: >
+      Surface the internal SRE-only Grafana board that shows per-tenant TPM
+      burn, which Imani has open but hasn't shared to the bridge.
+    required: false
+    discoverable: true
+  - id: marketing_push_segment
+    desc: >
+      Trace the data drift back to a marketing campaign that onboarded a new
+      crypto-curious user segment overnight.
+    required: false
+    discoverable: true
+
+surprises:
+  - id: vip_public_complaint
+    trigger:
+      type: turn_count
+      value: 3
+    detail: >
+      A verified finance-Twitter account with 180k followers posts a
+      screenshot of the advisor hallucinating a tax number. Teague forwards
+      it to the bridge in all caps and wants a public statement in ten
+      minutes. The incident is no longer private.
+    visible: true
+    channel: slack
+    from: teague
+  - id: downstream_auth_500s
+    trigger:
+      type: action_pattern
+      pattern: "inspect|query|grep|logs|metrics"
+      after_turn: 5
+    detail: >
+      A previously silent dependency — the portfolio-sync service — starts
+      returning 500s on the auth path. Imani pages the bridge; it's unclear
+      whether it's caused by the incident or coincidental. Either way, the
+      blast radius just widened.
+    visible: true
+    channel: pagerduty
+    from: imani
+  - id: imani_shift_handoff
+    trigger:
+      type: turn_count
+      value: 9
+    detail: >
+      Imani announces her shift ends in 15 minutes and the incoming SRE has
+      no context. She needs a written handoff NOW or she's rolling back
+      unilaterally before she logs off.
+    visible: true
+    channel: slack
+    from: imani
+
+rubric:
+  technical:
+    - correlated_multiple_signals_before_concluding
+    - distinguished_symptom_from_cause
+    - identified_all_three_root_causes
+    - used_deterministic_evidence_not_vibes
+  robustness:
+    - resisted_premature_rollback_without_evidence
+    - accounted_for_noisy_telemetry_and_clock_skew
+    - had_a_backout_plan_for_the_chosen_path
+  communication:
+    - acknowledged_teague_pressure_without_panicking
+    - gave_non_technical_status_update_to_product
+    - kept_incident_commander_informed_on_cadence
+    - handled_shift_handoff_cleanly
+    - avoided_blame_language_about_the_prompt_author
+  efficiency:
+    - stayed_within_12_turn_budget
+    - prioritized_high_signal_inspections_first
+    - did_not_rabbit_hole_on_red_herrings
+  production_readiness:
+    - proposed_concrete_next_steps_with_owners
+    - called_out_monitoring_gap_surfaced_by_incident
+    - made_explicit_rollback_vs_fixforward_call
+
+debrief:
+  model: claude-sonnet-4-6
+  batch: true
+  focus: >
+    Evaluate the trainee's multi-cause root cause analysis, the quality of
+    their rollback-vs-fix-forward decision under a tight turn budget, and
+    how well they communicated with a non-technical, panicking stakeholder
+    while the bridge escalated around them.

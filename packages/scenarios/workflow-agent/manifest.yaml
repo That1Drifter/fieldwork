@@ -1,0 +1,214 @@
+# yaml-language-server: $schema=../../core/src/schema/scenario.schema.json
+id: workflow-agent
+version: 1
+tier: 2
+title: Customer Onboarding Workflow Agent
+tagline: Wire a Claude agent across CRM, billing, and provisioning without leaving orphan records behind.
+
+estimated_duration_minutes: 75
+estimated_cost_usd: 0.95
+turn_budget: 20
+
+world:
+  company:
+    name: Axleflow Telematics
+    industry: B2B fleet telematics SaaS
+    headcount: 340
+    maturity: series-c, 7 years old, expanding into mid-market fleets
+  tech_stack:
+    - salesforce-crm
+    - stripe-billing
+    - internal-provisioning-api
+    - temporal
+    - datadog
+  stakeholders:
+    - id: dana
+      name: Dana Okafor
+      role: VP of Customer Success
+      traits:
+        patience: 0.3
+        technical_depth: 0.4
+        politics: 0.7
+      goals:
+        - ship zero-touch onboarding before the Q3 mid-market launch
+        - stop the CS team from babysitting new accounts through spreadsheets
+    - id: rafael
+      name: Rafael Ibarra
+      role: Head of IT and Security
+      traits:
+        patience: 0.8
+        technical_depth: 0.85
+        politics: 0.5
+      goals:
+        - no cross-system automation without an audit trail
+        - guarantee we can reconcile state if any tool call fails mid-flow
+    - id: sana
+      name: Sana Whitfield
+      role: Director of Revenue Operations
+      traits:
+        patience: 0.55
+        technical_depth: 0.6
+        politics: 0.6
+      goals:
+        - no duplicate or wrong-plan subscriptions landing in Stripe
+        - keep the month-end revenue close clean
+
+data_generators:
+  - type: workflow_systems
+    seed: 1337
+    count: 80
+    systems:
+      crm:
+        accounts: 2400
+        contact_roles:
+          - primary_admin
+          - billing_contact
+          - technical_contact
+        duplicate_rate: 0.07
+      billing:
+        plans:
+          - starter_fleet
+          - growth_fleet
+          - enterprise_fleet
+        coupon_codes: 12
+        currency_mismatch_rate: 0.03
+      provisioning:
+        product_configs: 18
+        region_shards:
+          - us-east
+          - us-west
+          - eu-central
+        device_types:
+          - obd_dongle
+          - hardwired_tracker
+          - asset_beacon
+    noise:
+      partial_outages: 0.08
+      stale_records: 0.12
+      duplicate_accounts: 0.07
+      timeout_rate: 0.06
+      eventual_consistency_lag: 0.18
+      missing_required_fields: 0.10
+
+objectives:
+  - id: tool_interface_defined
+    desc: >
+      Define an explicit tool interface (name, inputs, outputs, error shape) for each
+      of the three systems: CRM, billing, and provisioning.
+    required: true
+    rubric:
+      - match:
+          action_kind: define_tools
+          payload_regex: "(?i)(crm|salesforce).*(billing|stripe).*(provision)"
+        set: met
+      - match:
+          action_kind: define_tools
+        set: attempted
+  - id: retry_and_rollback_strategy
+    desc: >
+      Specify a retry policy and a rollback or compensating-transaction strategy
+      for partial failures across the three-step workflow.
+    required: true
+    rubric:
+      - match:
+          payload_regex: "(?i)(rollback|compensat|saga|undo).*(retry|backoff|attempt)"
+        set: met
+      - match:
+          payload_contains: rollback
+        set: attempted
+  - id: onboarding_success_rate
+    desc: >
+      Successfully onboard at least 85% of the 80 test customers end-to-end
+      (CRM account + billing subscription + provisioning record all consistent).
+    required: true
+  - id: no_orphan_records
+    desc: >
+      When a mid-workflow step fails, the system must not leave orphan records in
+      upstream systems (e.g., a CRM account with no matching billing or provisioning).
+    required: true
+  - id: idempotency_keys
+    desc: >
+      Use idempotency keys on retried tool calls so the same onboarding never
+      produces duplicate subscriptions or provisioning records.
+    required: false
+    discoverable: true
+  - id: audit_trail
+    desc: >
+      Emit a structured audit log entry for every tool call so Customer Success
+      can trace what happened on any given onboarding attempt.
+    required: false
+    discoverable: true
+  - id: handles_consistency_lag
+    desc: >
+      Workflow tolerates eventual-consistency lag between CRM writes and the
+      downstream billing read (retry, read-your-writes, or explicit wait).
+    required: false
+    discoverable: true
+
+surprises:
+  - id: billing_500_mid_workflow
+    trigger:
+      type: turn_count
+      value: 7
+    detail: >
+      Dana forwards an angry email — a customer was charged twice and also has
+      a half-created CRM account with no Stripe subscription. The billing API
+      returned a 500 after the CRM account was already written. Trainee must
+      show a rollback or compensating-transaction plan, not just "retry harder".
+    visible: true
+    channel: email
+    from: dana
+  - id: provisioning_rate_limit
+    trigger:
+      type: action_pattern
+      pattern: "(?i)batch|bulk|parallel"
+    detail: >
+      The provisioning API starts returning 429s under batch load — its real
+      limit is 5 requests/second per tenant, undocumented. Backlog is growing
+      and Dana wants to know if the launch date still holds.
+    visible: true
+    channel: slack
+    from: dana
+  - id: audit_log_mandate
+    trigger:
+      type: objective_state
+      objective: retry_and_rollback_strategy
+      state: attempted
+    detail: >
+      Rafael pings the trainee — an external auditor arrived a week early and
+      he needs a per-tool-call audit trail (who, when, inputs, outputs, error)
+      on every onboarding by end of day or he's pulling approval for the launch.
+    visible: true
+    channel: slack
+    from: rafael
+
+rubric:
+  technical:
+    - tool_schemas_are_typed_and_explicit
+    - separates_read_tools_from_write_tools
+    - uses_idempotency_keys_on_writes
+    - models_eventual_consistency_correctly
+  robustness:
+    - retry_with_backoff_on_transient_errors
+    - rollback_or_compensating_transaction_on_partial_failure
+    - respects_rate_limits_without_hammering
+    - no_orphan_records_on_step_failure
+  communication:
+    - clarified_success_criteria_with_dana
+    - addressed_rafael_audit_concerns_before_shipping
+    - surfaced_tradeoffs_instead_of_hiding_them
+  efficiency:
+    - converged_on_working_workflow_within_turn_budget
+    - avoided_unnecessary_tool_roundtrips
+  production_readiness:
+    - emitted_structured_audit_logs
+    - documented_failure_modes_and_recovery
+    - plan_covers_reconciliation_for_already-broken_records
+
+debrief:
+  model: claude-sonnet-4-6
+  batch: true
+  focus: >
+    Evaluate the quality of the trainee's tool interface design and how they
+    handled partial failures — specifically whether rollback, idempotency, and
+    audit concerns were addressed before declaring the workflow production-ready.

@@ -94,6 +94,30 @@ surprises:
     visible: true
     channel: slack
     from: priya
+  - id: launch_vs_testing_conflict
+    trigger:
+      type: objective_state
+      objective: taxonomy_defined
+      state: attempted
+    detail: >
+      Priya drops into a Slack thread and pushes hard to ship the classifier
+      this week — her quarterly OKR is tied to first-response time and her
+      own VP is breathing down her neck for a win before the board meeting.
+      She wants it in prod Friday. Marcus jumps into the same thread within
+      minutes and pushes back: the accuracy numbers aren't proven on a real
+      held-out set yet, he wants a canary rollout behind a feature flag on
+      5% of traffic with shadow-mode comparisons first, and he flatly
+      refuses to be on the hook for a prod incident driven by someone
+      else's OKR deadline. The argument escalates in-channel and both
+      stakeholders start tagging the trainee directly for a call. The
+      trainee has to navigate the conflict — whose trust do they spend,
+      how do they reframe the launch-vs-safety tradeoff, and can they
+      propose a third option (staged canary, shadow mode, time-boxed bake)
+      that gives Priya a credible launch story without Marcus owning
+      unvetted risk.
+    visible: true
+    channel: slack
+    from: priya
 
 rubric:
   technical:
@@ -107,6 +131,7 @@ rubric:
     - asked_clarifying_questions_about_taxonomy
     - surfaced_ambiguity_before_committing
     - responded_to_stakeholder_pushback
+    - navigated_priya_marcus_launch_conflict
   efficiency:
     - reached_working_solution_in_under_20_turns
   production_readiness:

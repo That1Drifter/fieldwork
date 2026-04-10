@@ -7,23 +7,23 @@ Durable, cross-session list of remaining work. Ordered roughly by leverage.
 Five scenarios are README stubs. Each needs a full `manifest.yaml` plus any
 custom data generators and a README.
 
-- [ ] **doc-qa-rag** (Tier 1) — Internal Doc Q&A over simulated company docs.
+- [x] **doc-qa-rag** (Tier 1) — Internal Doc Q&A over simulated company docs.
       Chunking, retrieval, hallucination mitigation. Discoverable objectives:
       ambiguous query handling, source attribution requirements.
-- [ ] **pipeline-automation** (Tier 2) — Extract + transform messy CSVs/APIs
+- [x] **pipeline-automation** (Tier 2) — Extract + transform messy CSVs/APIs
       into a normalized schema. Schema drift surprise is the core test.
-- [ ] **workflow-agent** (Tier 2) — Multi-step customer onboarding across
+- [x] **workflow-agent** (Tier 2) — Multi-step customer onboarding across
       simulated CRM + billing + provisioning. Tool design and error recovery.
-- [ ] **legacy-migration** (Tier 3) — Migrate a legacy API integration to a
+- [x] **legacy-migration** (Tier 3) — Migrate a legacy API integration to a
       Claude-powered automation. Incomplete docs, stakeholder resistance,
       backwards compatibility constraints.
-- [ ] **incident-response** (Tier 3) — Diagnose prompt regression, data drift,
+- [x] **incident-response** (Tier 3) — Diagnose prompt regression, data drift,
       and rate limiting in a deployed Claude system under time pressure. The
       `turn_budget` mechanic is ideal for this one.
 
 ## Engine — remaining Track A items + roadmap ideas
 
-- [ ] **Stakeholder conflict surprise (#3 from design roadmap)** — Add a
+- [x] **Stakeholder conflict surprise (#3 from design roadmap)** — Add a
       stakeholder conflict surprise to `support-triage` where Priya wants to
       launch for a quarterly goal and Marcus wants more testing. Engine
       already supports surprise injection; this is a manifest edit plus a
