@@ -35,6 +35,9 @@ pnpm dev
 
 Open http://localhost:3000, pick a scenario, and get to work.
 
+Want more detail on setup, prerequisites, and running the CLI/tests? See
+[docs/getting-started.md](docs/getting-started.md).
+
 ## How it works
 
 Every scenario is a YAML manifest describing a simulated company: its industry,
@@ -141,10 +144,12 @@ API key and your data never leaves your machine.
 
 ## Project status
 
-**Phase 1 playable.** The Support Ticket Classifier scenario runs end-to-end
-with live inner-Claude turns, stakeholder dialogue, discoverable objectives,
-trust tracking, per-turn objective transitions, and a sharpened debrief that
-cites specific turns and proposes alternative prompts.
+**Phase 1 playable.** All six scenarios in the catalog are authored, schema-valid,
+and loadable through the web app. Support Ticket Classifier and Internal Doc Q&A
+are the scenarios exercised end-to-end on a live API (turn loop, stakeholder
+dialogue, discoverable objectives, trust tracking, per-turn objective
+transitions, cost tracking). The other four Tier 2–3 scenarios are authored
+but haven't been played on live API yet.
 
 Working:
 
@@ -153,16 +158,22 @@ Working:
 - JSON file session persistence (`data/sessions.json`, survives server restart)
 - Stakeholder trust meter with colored bars in the briefing panel
 - Turn budget and live USD cost display
+- Deterministic per-turn objective scoring via manifest `rubric` rules
+  (`action_kind` / `payload_contains` / case-insensitive `payload_regex`)
+- Surprise engine with `turn_count`, `objective_state`, `action_pattern`, and
+  `random` triggers
 - Collapsible action log viewer
+- End-of-scenario debrief with turn-specific, alternative-prompt critiques
 - `fieldwork validate` CLI wired to the scenario schema
-- 17+ passing unit tests (scenario schema, ticket generator, surprise engine)
+- 34 passing unit tests across core, rubric, and scenarios
 
 Not yet built (see [TODO.md](TODO.md)):
 
-- The 5 other scenario manifests (currently README stubs only)
-- Per-turn deterministic rubric checks (currently LLM-driven via inner Claude)
-- Stakeholder conflict surprises / political pressure mechanics
+- Inner Claude response streaming (currently blocks the UI 5–15s per turn)
+- SQLite session persistence (to replace the single-writer JSON file store)
+- Action log summarization for long runs (prompt bloats past ~20 turns)
 - Cross-session history and analytics
+- Demo GIF in the README
 
 ## Contributing
 
