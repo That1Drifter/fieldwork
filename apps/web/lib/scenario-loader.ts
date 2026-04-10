@@ -7,6 +7,7 @@
 
 import { loadScenario } from '@fieldwork/scenarios';
 import { generateTickets, type Ticket } from '@fieldwork/core';
+import type { ObjectiveRubricRule } from '@fieldwork/rubric';
 
 export interface ParsedStakeholder {
   id: string;
@@ -21,6 +22,7 @@ export interface ParsedObjective {
   desc: string;
   required?: boolean;
   discoverable?: boolean;
+  rubric?: ObjectiveRubricRule[];
 }
 
 export interface ParsedScenario {

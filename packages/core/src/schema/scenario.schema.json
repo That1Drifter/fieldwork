@@ -96,6 +96,40 @@
             "type": "boolean",
             "default": false,
             "description": "When true, this objective is hidden from the trainee until surfaced through discovery (stakeholder mention or a question that touches on it)."
+          },
+          "rubric": {
+            "type": "array",
+            "description": "Deterministic rules evaluated against each trainee action. First matching rule sets the objective state, overriding inner Claude's judgment for the turn. Rules should only upgrade state (open -> attempted -> met) — the engine does not prevent downgrades.",
+            "items": {
+              "type": "object",
+              "required": ["match", "set"],
+              "additionalProperties": false,
+              "properties": {
+                "match": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "description": "All defined conditions must match for the rule to fire. Omitting a condition means it is not checked.",
+                  "properties": {
+                    "action_kind": {
+                      "type": "string",
+                      "description": "Exact match on action.kind."
+                    },
+                    "payload_contains": {
+                      "type": "string",
+                      "description": "Case-insensitive substring match against the JSON-serialized action payload."
+                    },
+                    "payload_regex": {
+                      "type": "string",
+                      "description": "Regex (JavaScript flavor) tested against the JSON-serialized action payload."
+                    }
+                  }
+                },
+                "set": {
+                  "type": "string",
+                  "enum": ["open", "attempted", "met", "failed"]
+                }
+              }
+            }
           }
         }
       }
