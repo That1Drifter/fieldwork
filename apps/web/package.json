@@ -17,7 +17,7 @@
     "@fieldwork/rubric": "workspace:*",
     "@fieldwork/scenarios": "workspace:*",
     "@fieldwork/ui": "workspace:*",
-    "next": "^15.0.0",
+    "next": "^16.2.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
