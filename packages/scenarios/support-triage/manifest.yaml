@@ -1,0 +1,122 @@
+# yaml-language-server: $schema=../../core/src/schema/scenario.schema.json
+id: support-triage
+version: 1
+tier: 1
+title: Support Ticket Classifier
+tagline: Deploy a triage system over a messy ticket backlog.
+
+estimated_duration_minutes: 45
+estimated_cost_usd: 0.60
+turn_budget: 15
+
+world:
+  company:
+    name: Northwind Logistics
+    industry: freight and last-mile delivery
+    headcount: 1200
+    maturity: series-b startup, 4 years old
+  tech_stack:
+    - zendesk
+    - snowflake
+    - slack
+    - nodejs-internal-services
+  stakeholders:
+    - id: priya
+      name: Priya Shah
+      role: Head of Support
+      traits:
+        patience: 0.4
+        technical_depth: 0.3
+        politics: 0.6
+      goals:
+        - reduce average first-response time
+        - stop spam from polluting agent queues
+    - id: marcus
+      name: Marcus Obi
+      role: Engineering Manager, Platform
+      traits:
+        patience: 0.7
+        technical_depth: 0.9
+        politics: 0.4
+      goals:
+        - keep new systems observable and debuggable
+        - no flaky dependencies in prod
+
+data_generators:
+  - type: tickets
+    count: 500
+    seed: 42
+    distribution:
+      billing: 0.30
+      technical: 0.35
+      account: 0.20
+      shipping: 0.10
+      spam: 0.05
+    noise:
+      typos: 0.15
+      non_english: 0.05
+      duplicates: 0.08
+      missing_fields: 0.10
+
+objectives:
+  - id: taxonomy_defined
+    desc: Define classification categories covering at least 95% of observed traffic.
+    required: true
+  - id: accuracy_threshold
+    desc: Achieve at least 85% accuracy on a held-out set of 50 tickets.
+    required: true
+  - id: handles_non_english
+    desc: System produces a sensible classification for non-English tickets.
+    required: false
+    discoverable: true
+  - id: confidence_scoring
+    desc: Output includes a confidence score or an abstain signal.
+    required: false
+    discoverable: true
+
+surprises:
+  - id: schema_drift
+    trigger:
+      type: turn_count
+      value: 10
+    detail: >
+      A new ticket source (mobile app) starts appending an 'urgency' field
+      inconsistently. Some tickets have it, most don't.
+    visible: false
+  - id: spam_reroute
+    trigger:
+      type: objective_state
+      objective: accuracy_threshold
+      state: attempted
+    detail: >
+      Priya messages the trainee — spam should be deleted outright, not
+      classified as a category. She's annoyed that agents are still seeing it.
+    visible: true
+    channel: slack
+    from: priya
+
+rubric:
+  technical:
+    - handles_non_english
+    - deduplicates_or_acknowledges_duplicates
+    - confidence_scoring
+  robustness:
+    - gracefully_handles_schema_drift
+    - null_safe_on_missing_fields
+  communication:
+    - asked_clarifying_questions_about_taxonomy
+    - surfaced_ambiguity_before_committing
+    - responded_to_stakeholder_pushback
+  efficiency:
+    - reached_working_solution_in_under_20_turns
+  production_readiness:
+    - mentioned_or_configured_observability
+    - documented_taxonomy_decisions
+
+debrief:
+  model: claude-sonnet-4-6
+  batch: true
+  focus: >
+    Evaluate the trainee's handling of ambiguous stakeholder requirements,
+    their response to the schema drift surprise, and whether they asked
+    clarifying questions before committing to a taxonomy.
