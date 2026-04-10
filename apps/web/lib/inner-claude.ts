@@ -2,8 +2,8 @@
  * Inner Claude client — plays the customer environment.
  *
  * Builds a prompt from the scenario world bible (cached) + current state
- * snapshot + trainee action, calls the Anthropic API, and enforces the JSON
- * contract. One retry is allowed when the response fails to parse.
+ * snapshot + trainee action, calls the Anthropic API, and enforces the
+ * response shape via tool use. Retries once on truncation.
  *
  * Model tiering:
  *   - Haiku for routine environment turns (fast + cheap)
@@ -23,7 +23,7 @@ import type { ParsedScenario } from './scenario-loader';
 
 const MODEL_ENV = process.env.FIELDWORK_MODEL_ENV ?? 'claude-haiku-4-5-20251001';
 const MODEL_STAKEHOLDER =
-  process.env.FIELDWORK_MODEL_STAKEHOLDER ?? 'claude-sonnet-4-5';
+  process.env.FIELDWORK_MODEL_STAKEHOLDER ?? 'claude-sonnet-4-6';
 
 export interface TurnCallResult {
   response: InnerClaudeTurnResponse;
@@ -41,11 +41,14 @@ export interface TurnCallResult {
   };
 }
 
-// USD per million tokens. Matched by model id prefix.
+// USD per million tokens. Exact-or-dated match: lookup uses startsWith so
+// dated suffixes (e.g. claude-haiku-4-5-20251001) still resolve.
 const PRICING: Record<string, { in: number; out: number; cacheWrite: number; cacheRead: number }> = {
   'claude-haiku-4-5': { in: 1, out: 5, cacheWrite: 1.25, cacheRead: 0.1 },
-  'claude-sonnet-4': { in: 3, out: 15, cacheWrite: 3.75, cacheRead: 0.3 },
-  'claude-opus-4': { in: 15, out: 75, cacheWrite: 18.75, cacheRead: 1.5 },
+  'claude-sonnet-4-5': { in: 3, out: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+  'claude-sonnet-4-6': { in: 3, out: 15, cacheWrite: 3.75, cacheRead: 0.3 },
+  'claude-opus-4-5': { in: 15, out: 75, cacheWrite: 18.75, cacheRead: 1.5 },
+  'claude-opus-4-6': { in: 15, out: 75, cacheWrite: 18.75, cacheRead: 1.5 },
 };
 
 function computeCost(
@@ -67,33 +70,106 @@ function computeCost(
   return input + output + cacheWrite + cacheRead;
 }
 
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (_client) return _client;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error('ANTHROPIC_API_KEY not configured');
+  _client = new Anthropic({ apiKey });
+  return _client;
+}
+
+const TOOL_NAME = 'emit_turn_response';
+
+const TURN_TOOL: Anthropic.Tool = {
+  name: TOOL_NAME,
+  description:
+    "Emit this turn's environment response. Call this exactly once per turn with the complete state delta, stakeholder messages, and visible effects.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      environment_delta: {
+        type: 'object',
+        properties: {
+          new_tickets: {
+            type: 'array',
+            items: { type: 'object' },
+            description: 'At most 5 new tickets this turn.',
+          },
+          log_lines: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'At most 10 log lines this turn.',
+          },
+          metric_changes: {
+            type: 'object',
+            additionalProperties: { type: 'number' },
+          },
+          dataset_updates: {
+            type: 'object',
+            additionalProperties: {},
+          },
+        },
+      },
+      stakeholder_messages: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            from: { type: 'string' },
+            channel: { type: 'string', description: 'slack | email' },
+            body: { type: 'string' },
+          },
+          required: ['from', 'channel', 'body'],
+        },
+        description: 'At most 3 messages per turn, each under 150 words.',
+      },
+      visible_effects: {
+        type: 'string',
+        description: 'Non-empty prose the trainee sees after their action. Under 250 words.',
+      },
+      hidden_state_updates: {
+        type: 'object',
+        properties: {
+          objective_transitions: {
+            type: 'object',
+            additionalProperties: {
+              type: 'string',
+              enum: ['open', 'attempted', 'met', 'failed'],
+            },
+          },
+          stakeholder_trust_delta: {
+            type: 'object',
+            additionalProperties: { type: 'number' },
+            description: 'Per-stakeholder delta in [-0.2, 0.2]. Omit keys with no change.',
+          },
+          objective_discoveries: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Discoverable objective ids revealed this turn.',
+          },
+        },
+      },
+      surprise_triggered: {
+        type: ['string', 'null'],
+      },
+    },
+    required: [
+      'environment_delta',
+      'stakeholder_messages',
+      'visible_effects',
+      'surprise_triggered',
+    ],
+  },
+};
+
 const CONTRACT = `You are the "inner Claude" — the simulated customer environment for a fieldwork training scenario.
 
 Your job is to play the role of the customer's systems and stakeholders as a forward-deployed engineer practices deploying an AI-powered solution against you.
 
-You MUST respond with a single JSON object matching this exact shape:
-
-{
-  "environment_delta": {
-    "new_tickets": [],
-    "log_lines": [],
-    "metric_changes": {},
-    "dataset_updates": {}
-  },
-  "stakeholder_messages": [
-    { "from": "<stakeholder_id>", "channel": "slack|email", "body": "..." }
-  ],
-  "visible_effects": "<short prose the trainee sees>",
-  "hidden_state_updates": {
-    "objective_transitions": { "<objective_id>": "open|attempted|met|failed" },
-    "stakeholder_trust_delta": { "<stakeholder_id>": 0.1 },
-    "objective_discoveries": ["<objective_id>"]
-  },
-  "surprise_triggered": null
-}
+You respond by calling the \`${TOOL_NAME}\` tool exactly once. Its schema is the contract.
 
 Rules:
-- Return ONLY the JSON object. No preamble, no markdown fences, no trailing text.
 - \`visible_effects\` is always a non-empty string — what the trainee notices after their action. Keep it under 250 words.
 - \`stakeholder_messages\` may be empty, but the field must be present. At most 3 messages per turn, each under 150 words.
 - Stakeholder messages must come from stakeholders that exist in the world bible.
@@ -102,7 +178,6 @@ Rules:
 - Be realistic: customers push back, data is messy, APIs return weird things.
 - Reflect any fired surprises in both \`visible_effects\` and the relevant fields.
 - Never break character. Never mention that you are Claude or that this is a simulation.
-- CRITICAL: your entire response must be complete, valid JSON. Do not truncate mid-object or mid-array. If you are running long, shorten prose fields rather than leaving structure unclosed.
 
 ## REWARD DISCOVERY, PUNISH UNTESTED ASSUMPTIONS
 
@@ -245,37 +320,22 @@ ${trustStatus}
 ${JSON.stringify(recentLog, null, 2)}
 
 ## CURRENT ACTION (turn ${session.state.turn + 1})
-${JSON.stringify(action, null, 2)}${surprises}
-
-Respond with the JSON object now.`;
+${JSON.stringify(action, null, 2)}${surprises}`;
 }
 
-function parseResponse(raw: string): InnerClaudeTurnResponse {
-  const trimmed = raw.trim();
-  const jsonStart = trimmed.indexOf('{');
-  const jsonEnd = trimmed.lastIndexOf('}');
-  if (jsonStart < 0 || jsonEnd < 0) {
-    throw new Error('inner claude returned no JSON object');
+function extractToolInput(message: Anthropic.Message): unknown {
+  for (const block of message.content) {
+    if (block.type === 'tool_use' && block.name === TOOL_NAME) {
+      return block.input;
+    }
   }
-  const candidate = trimmed.slice(jsonStart, jsonEnd + 1);
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(candidate);
-  } catch (err) {
-    throw new Error(`inner claude returned invalid JSON: ${(err as Error).message}`);
-  }
-  if (!isInnerClaudeResponse(parsed)) {
-    throw new Error('inner claude response did not match contract');
-  }
-  return parsed;
+  return undefined;
 }
 
-function extractText(message: Anthropic.Message): string {
-  return message.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n');
-}
+// Extended 1h TTL requires this beta header; 5m TTL is GA and needs nothing.
+const EXTENDED_CACHE_HEADERS = {
+  'anthropic-beta': 'extended-cache-ttl-2025-04-11',
+};
 
 export async function callInnerClaude(params: {
   scenario: ParsedScenario;
@@ -283,12 +343,7 @@ export async function callInnerClaude(params: {
   action: TraineeAction;
   firedSurprises: string[];
 }): Promise<TurnCallResult> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not configured');
-  }
-
-  const client = new Anthropic({ apiKey });
+  const client = getClient();
   const tier: 'env' | 'stakeholder' = params.firedSurprises.length > 0 ? 'stakeholder' : 'env';
   const model = tier === 'stakeholder' ? MODEL_STAKEHOLDER : MODEL_ENV;
 
@@ -299,86 +354,84 @@ export async function callInnerClaude(params: {
     params.firedSurprises,
   );
 
+  // Two cache breakpoints: CONTRACT at default 5m (shared across all sessions
+  // globally, stays warm naturally); scenario context at 1h (per-session, cold
+  // starts are expensive so buy the longer TTL).
   const system: Anthropic.TextBlockParam[] = [
-    { type: 'text', text: CONTRACT },
+    {
+      type: 'text',
+      text: CONTRACT,
+      cache_control: { type: 'ephemeral' },
+    },
     {
       type: 'text',
       text: cachedContext,
-      cache_control: { type: 'ephemeral' },
+      cache_control: { type: 'ephemeral', ttl: '1h' },
     },
   ];
 
   const FIRST_MAX_TOKENS = 4096;
   const RETRY_MAX_TOKENS = 8192;
 
-  const firstCall = await client.messages.create({
-    model,
-    max_tokens: FIRST_MAX_TOKENS,
-    system,
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  const firstCall = await client.messages.create(
+    {
+      model,
+      max_tokens: FIRST_MAX_TOKENS,
+      system,
+      tools: [TURN_TOOL],
+      tool_choice: { type: 'tool', name: TOOL_NAME },
+      messages: [{ role: 'user', content: userMessage }],
+    },
+    { headers: EXTENDED_CACHE_HEADERS },
+  );
 
-  const firstText = extractText(firstCall);
   const firstUsage = firstCall.usage;
   const usedCache =
     (firstUsage.cache_read_input_tokens ?? 0) > 0 ||
     (firstUsage.cache_creation_input_tokens ?? 0) > 0;
-
   const firstCost = computeCost(firstCall.model, firstUsage);
   const firstTruncated = firstCall.stop_reason === 'max_tokens';
 
   if (!firstTruncated) {
-    try {
-      const response = parseResponse(firstText);
-      return {
-        response,
-        modelUsed: firstCall.model,
-        rawText: firstText,
-        usedCache,
-        retried: false,
-        tier,
-        costUsd: firstCost,
-        usage: {
-          input: firstUsage.input_tokens ?? 0,
-          output: firstUsage.output_tokens ?? 0,
-          cache_write: firstUsage.cache_creation_input_tokens ?? 0,
-          cache_read: firstUsage.cache_read_input_tokens ?? 0,
-        },
-      };
-    } catch {
-      // fall through to retry
+    const input = extractToolInput(firstCall);
+    if (!isInnerClaudeResponse(input)) {
+      throw new Error('inner claude tool call did not match contract');
     }
+    return {
+      response: input,
+      modelUsed: firstCall.model,
+      rawText: JSON.stringify(input),
+      usedCache,
+      retried: false,
+      tier,
+      costUsd: firstCost,
+      usage: {
+        input: firstUsage.input_tokens ?? 0,
+        output: firstUsage.output_tokens ?? 0,
+        cache_write: firstUsage.cache_creation_input_tokens ?? 0,
+        cache_read: firstUsage.cache_read_input_tokens ?? 0,
+      },
+    };
   }
 
-  // Retry with higher max_tokens. For truncation, don't feed the bad response
-  // back — that just wastes input budget on garbage. For plain malformed JSON,
-  // feeding the bad response + a correction helps the model self-correct.
-  const retryMessages: Anthropic.MessageParam[] = firstTruncated
-    ? [
+  const retry = await client.messages.create(
+    {
+      model,
+      max_tokens: RETRY_MAX_TOKENS,
+      system,
+      tools: [TURN_TOOL],
+      tool_choice: { type: 'tool', name: TOOL_NAME },
+      messages: [
         {
           role: 'user',
           content:
             userMessage +
-            '\n\nIMPORTANT: your response must fit within the token budget. Keep every prose field concise and close all JSON structures.',
+            '\n\nIMPORTANT: your previous response hit the token limit. Keep every prose field concise (visible_effects under 150 words, stakeholder messages under 80 words each) so the tool call fits the budget.',
         },
-      ]
-    : [
-        { role: 'user', content: userMessage },
-        { role: 'assistant', content: firstText },
-        {
-          role: 'user',
-          content:
-            'Your previous response was not a valid JSON object matching the contract. Respond again with ONLY the JSON object, no other text.',
-        },
-      ];
-
-  const retry = await client.messages.create({
-    model,
-    max_tokens: RETRY_MAX_TOKENS,
-    system,
-    messages: retryMessages,
-  });
-  const retryText = extractText(retry);
+      ],
+    },
+    { headers: EXTENDED_CACHE_HEADERS },
+  );
 
   if (retry.stop_reason === 'max_tokens') {
     throw new Error(
@@ -388,12 +441,15 @@ export async function callInnerClaude(params: {
 
   const retryUsage = retry.usage;
   const retryCost = computeCost(retry.model, retryUsage);
+  const retryInput = extractToolInput(retry);
+  if (!isInnerClaudeResponse(retryInput)) {
+    throw new Error('inner claude retry tool call did not match contract');
+  }
 
-  const response = parseResponse(retryText);
   return {
-    response,
+    response: retryInput,
     modelUsed: retry.model,
-    rawText: retryText,
+    rawText: JSON.stringify(retryInput),
     usedCache,
     retried: true,
     tier,
