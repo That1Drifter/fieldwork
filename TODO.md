@@ -4,15 +4,6 @@ Durable, cross-session list of remaining work. Ordered by leverage.
 
 ## Now — top of the stack
 
-- [ ] **Staging server is OOM-killed under modest load.** Six SIGKILL events
-      (exit 137) on the staging box on 2026-04-10 alone, including twice
-      mid-playthrough during a fresh-eyes Sonnet evaluation. Surfaced from
-      `~/fieldwork/server.log` on the staging host. Two things to root-cause:
-      (a) why is Next.js running out of memory — check `free -m` on the box,
-      profile RSS over a session, see if the prompt cache or session-store
-      is leaking; (b) does `apps/web/lib/session-store.ts` rehydrate from
-      `data/sessions.json` on startup? If not, every OOM kill silently
-      destroys all in-flight sessions even though the JSON file is on disk.
 - [ ] **Inner Claude contract guard rejects valid tool inputs intermittently.**
       The fresh-eyes Sonnet agent hit `inner claude tool call did not match
       contract` (the throw at `apps/web/lib/inner-claude.ts:401`) on roughly
@@ -29,9 +20,7 @@ Durable, cross-session list of remaining work. Ordered by leverage.
       calls `startSession()` unconditionally on mount, with no URL/cookie
       session restore. Hit F5 mid-scenario and you lose 30+ minutes of
       progress. Fix: put `?session=<id>` in the URL after start, look it up
-      on mount, fall back to fresh start if absent. Verify `session-store`
-      rehydrates from disk on server startup at the same time — see the
-      OOM item above.
+      on mount, fall back to fresh start if absent.
 - [ ] **Demo GIF** in the README. Draft already generated at
       `%TEMP%/fieldwork-demo/fieldwork-demo.gif` (12 curated frames, ~25s
       loop, 1086 KB) using `scripts/stitch-demo-gif.py`. Needs review,
@@ -125,6 +114,11 @@ re-open them.
   entries from a pre-fix build.
 - Reset button has no confirmation guard — actually does, see
   `PlayClient.tsx:236` (`window.confirm` when `state.turn > 0`).
+- Staging server "OOM-killed" under load — refuted. Box has 32 GB RAM
+  with 18 GB free and zero kernel OOM events in 8 days of uptime. The
+  exit-137 "Killed" entries in `server.log` are the deploy script's
+  own `fuser -k 3005/tcp` (SIGKILL by default) in `stop_server()`.
+  Six "kills" today = six redeploys today. No infra issue.
 
 ## Done
 
