@@ -14,7 +14,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import {
-  isInnerClaudeResponse,
+  normalizeInnerClaudeResponse,
   type InnerClaudeTurnResponse,
   type TraineeAction,
 } from '@fieldwork/core';
@@ -397,11 +397,12 @@ export async function callInnerClaude(params: {
 
   if (!firstTruncated) {
     const input = extractToolInput(firstCall);
-    if (!isInnerClaudeResponse(input)) {
+    const response = normalizeInnerClaudeResponse(input);
+    if (!response) {
       throw new Error('inner claude tool call did not match contract');
     }
     return {
-      response: input,
+      response,
       modelUsed: firstCall.model,
       rawText: JSON.stringify(input),
       usedCache,
@@ -445,12 +446,13 @@ export async function callInnerClaude(params: {
   const retryUsage = retry.usage;
   const retryCost = computeCost(retry.model, retryUsage);
   const retryInput = extractToolInput(retry);
-  if (!isInnerClaudeResponse(retryInput)) {
+  const retryResponse = normalizeInnerClaudeResponse(retryInput);
+  if (!retryResponse) {
     throw new Error('inner claude retry tool call did not match contract');
   }
 
   return {
-    response: retryInput,
+    response: retryResponse,
     modelUsed: retry.model,
     rawText: JSON.stringify(retryInput),
     usedCache,
