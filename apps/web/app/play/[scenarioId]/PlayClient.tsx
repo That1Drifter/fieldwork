@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 
 interface Stakeholder {
@@ -219,6 +220,13 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
     <main className="mx-auto max-w-6xl p-6">
       <header className="mb-6 flex items-baseline justify-between">
         <div>
+          <Link
+            href="/"
+            className="mb-1 inline-block text-sm text-neutral-500 transition-colors hover:text-neutral-300 focus-visible:text-neutral-300 focus-visible:outline-none"
+            data-testid="back-to-scenarios"
+          >
+            ← all scenarios
+          </Link>
           <h1 className="text-3xl font-semibold" data-testid="scenario-title">
             {scenario.title}
           </h1>
@@ -397,9 +405,18 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
             </div>
           )}
           {debrief && (
-            <div className="mt-4 whitespace-pre-wrap rounded border border-blue-900 bg-blue-950/30 p-3 text-base text-blue-100" data-testid="debrief-output">
-              {debrief}
-            </div>
+            <>
+              <div className="mt-4 whitespace-pre-wrap rounded border border-blue-900 bg-blue-950/30 p-3 text-base text-blue-100" data-testid="debrief-output">
+                {debrief}
+              </div>
+              <Link
+                href="/"
+                className="mt-3 inline-block rounded border border-blue-900 bg-blue-950/30 px-3 py-1.5 text-sm text-blue-200 transition-colors hover:border-blue-700 hover:bg-blue-900/40 focus-visible:border-blue-700 focus-visible:outline-none"
+                data-testid="pick-another-scenario"
+              >
+                Pick another scenario →
+              </Link>
+            </>
           )}
         </section>
 
