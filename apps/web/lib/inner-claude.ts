@@ -358,10 +358,13 @@ export async function callInnerClaude(params: {
   // globally, stays warm naturally); scenario context at 1h (per-session, cold
   // starts are expensive so buy the longer TTL).
   const system: Anthropic.TextBlockParam[] = [
+    // Both blocks use 1h TTL: the API requires longer-TTL cache_control blocks
+    // to come before shorter ones, and CONTRACT is static globally so the
+    // longer TTL is strictly better — paid once, read constantly.
     {
       type: 'text',
       text: CONTRACT,
-      cache_control: { type: 'ephemeral' },
+      cache_control: { type: 'ephemeral', ttl: '1h' },
     },
     {
       type: 'text',
