@@ -1,0 +1,16 @@
+# Force LF line endings for all text files on every platform.
+# Avoids the "LF will be replaced by CRLF" warnings on Windows checkouts
+# and keeps Prettier / ESLint / Next.js happy across contributors.
+* text=auto eol=lf
+
+# Binary files — never touch.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary
