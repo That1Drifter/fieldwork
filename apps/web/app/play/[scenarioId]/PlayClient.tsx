@@ -110,6 +110,16 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
   const [cumulativeCost, setCumulativeCost] = useState<number>(0);
   const [flashingObjectives, setFlashingObjectives] = useState<Set<string>>(new Set());
 
+  const applySessionData = useCallback((data: StartResponse) => {
+    setSessionId(data.sessionId);
+    setScenario(data.scenario);
+    setState(data.state);
+    setTickets(data.ticketsPreview);
+    setTicketCount(data.ticketCount);
+    setTurnBudget(data.turnBudget);
+    setCumulativeCost(data.cumulativeCostUsd ?? 0);
+  }, []);
+
   const startSession = useCallback(async () => {
     setError(null);
     setDebrief(null);
@@ -124,22 +134,56 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
         setError(`session start failed: ${res.status}`);
         return;
       }
-      const data = (await res.json()) as StartResponse;
-      setSessionId(data.sessionId);
-      setScenario(data.scenario);
-      setState(data.state);
-      setTickets(data.ticketsPreview);
-      setTicketCount(data.ticketCount);
-      setTurnBudget(data.turnBudget);
-      setCumulativeCost(data.cumulativeCostUsd ?? 0);
+      applySessionData((await res.json()) as StartResponse);
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [scenarioId]);
+  }, [scenarioId, applySessionData]);
+
+  const restoreSession = useCallback(
+    async (id: string): Promise<boolean> => {
+      setError(null);
+      setDebrief(null);
+      setLastEffects('');
+      try {
+        const res = await fetch(`/api/session/${id}`);
+        if (res.status === 404) return false;
+        if (!res.ok) {
+          setError(`session restore failed: ${res.status}`);
+          return false;
+        }
+        applySessionData((await res.json()) as StartResponse);
+        return true;
+      } catch (err) {
+        setError((err as Error).message);
+        return false;
+      }
+    },
+    [applySessionData],
+  );
 
   useEffect(() => {
-    startSession();
-  }, [startSession]);
+    const url = new URL(window.location.href);
+    const existing = url.searchParams.get('session');
+    if (existing) {
+      restoreSession(existing).then((ok) => {
+        if (!ok) startSession();
+      });
+    } else {
+      startSession();
+    }
+  }, [restoreSession, startSession]);
+
+  // Keep ?session=<id> in the URL in sync with the active sessionId so a
+  // page reload (or shared link) restores the same session instead of
+  // silently starting a new one.
+  useEffect(() => {
+    if (!sessionId || typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    if (url.searchParams.get('session') === sessionId) return;
+    url.searchParams.set('session', sessionId);
+    window.history.replaceState({}, '', url.toString());
+  }, [sessionId]);
 
   const runTurn = async () => {
     if (!sessionId || !prompt.trim() || loading) return;
