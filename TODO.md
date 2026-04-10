@@ -42,10 +42,6 @@ custom data generators and a README.
 
 ## Ship-it
 
-- [ ] **First git commit** — everything is uncommitted. Initial commit would
-      cover ~80 files.
-- [ ] **Push to GitHub** — repo currently has no remote. Decide public vs
-      private at that point.
 - [ ] **Demo GIF** in the README showing a full discovery-rich turn → trust
       movement → objective reveal → debrief flow.
 
@@ -62,9 +58,5 @@ custom data generators and a README.
 - [ ] `@fieldwork/core` imports use extension-less paths because Next.js
       webpack struggles with `.js` imports in workspace TS. Revisit if we
       move to a different bundler or bump to a Next version that handles it.
-- [ ] `cache_control` passed to Anthropic SDK via `unknown` cast because
-      `@anthropic-ai/sdk@0.32.1` types lag the runtime support. Upgrade SDK
-      when a version ships with proper types.
 - [ ] Sessions persist to a single JSON file (`data/sessions.json`), atomic
       write + rename. No concurrent writer support.
-- [ ] First commit doesn't exist — any rollback requires manual file reversion.
