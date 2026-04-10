@@ -14,7 +14,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import {
-  isInnerClaudeResponse,
+  normalizeInnerClaudeResponse,
   type InnerClaudeTurnResponse,
   type TraineeAction,
 } from '@fieldwork/core';
@@ -168,6 +168,15 @@ const CONTRACT = `You are the "inner Claude" — the simulated customer environm
 Your job is to play the role of the customer's systems and stakeholders as a forward-deployed engineer practices deploying an AI-powered solution against you.
 
 You respond by calling the \`${TOOL_NAME}\` tool exactly once. Its schema is the contract.
+
+## TOOL CALL SHAPE — READ THIS BEFORE EVERY TURN
+
+The tool input is a JSON object. EVERY field is a separate top-level key. Common mistakes to avoid:
+
+- DO NOT pack multiple fields into a single stringified blob. \`stakeholder_messages\`, \`visible_effects\`, \`hidden_state_updates\`, and \`surprise_triggered\` are SEPARATE TOP-LEVEL KEYS in the tool input. Never emit \`stakeholder_messages\` as a string — it is always a JSON array of message objects, even when there are zero messages (then it is \`[]\`).
+- DO NOT omit \`visible_effects\` even on no-op turns. Without it the trainee sees nothing and the turn fails. If the trainee did something boring, narrate the boring thing in one sentence.
+- DO NOT omit \`environment_delta\` or \`stakeholder_messages\` — emit them as empty (\`{}\` and \`[]\`) when there is nothing to add. Empty is fine; missing breaks the turn.
+- \`surprise_triggered\` must be present every turn, as either a string id or \`null\`.
 
 Rules:
 - \`visible_effects\` is always a non-empty string — what the trainee notices after their action. Keep it under 250 words.
@@ -395,27 +404,48 @@ export async function callInnerClaude(params: {
   const firstCost = computeCost(firstCall.model, firstUsage);
   const firstTruncated = firstCall.stop_reason === 'max_tokens';
 
+  // Two retry triggers, both recoverable: (a) the response was truncated at
+  // max_tokens, (b) the tool input came back malformed (e.g. Haiku
+  // occasionally emits stakeholder_messages as a stringified blob containing
+  // the sibling fields, leaving visible_effects missing at the top level).
+  // Both fail one in five-ish on the cheap model and almost never recur on
+  // retry, so a single re-call beats the alternatives (salvage parsing,
+  // hard rejection).
+  let retryReason: 'truncated' | 'malformed' | null = firstTruncated
+    ? 'truncated'
+    : null;
+
   if (!firstTruncated) {
     const input = extractToolInput(firstCall);
-    if (!isInnerClaudeResponse(input)) {
-      throw new Error('inner claude tool call did not match contract');
+    const response = normalizeInnerClaudeResponse(input);
+    if (response) {
+      return {
+        response,
+        modelUsed: firstCall.model,
+        rawText: JSON.stringify(input),
+        usedCache,
+        retried: false,
+        tier,
+        costUsd: firstCost,
+        usage: {
+          input: firstUsage.input_tokens ?? 0,
+          output: firstUsage.output_tokens ?? 0,
+          cache_write: firstUsage.cache_creation_input_tokens ?? 0,
+          cache_read: firstUsage.cache_read_input_tokens ?? 0,
+        },
+      };
     }
-    return {
-      response: input,
-      modelUsed: firstCall.model,
-      rawText: JSON.stringify(input),
-      usedCache,
-      retried: false,
-      tier,
-      costUsd: firstCost,
-      usage: {
-        input: firstUsage.input_tokens ?? 0,
-        output: firstUsage.output_tokens ?? 0,
-        cache_write: firstUsage.cache_creation_input_tokens ?? 0,
-        cache_read: firstUsage.cache_read_input_tokens ?? 0,
-      },
-    };
+    console.error(
+      '[inner-claude] first tool input rejected by normalize, retrying:',
+      JSON.stringify(input),
+    );
+    retryReason = 'malformed';
   }
+
+  const retryHint =
+    retryReason === 'truncated'
+      ? '\n\nIMPORTANT: your previous response hit the token limit. Keep every prose field concise (visible_effects under 150 words, stakeholder messages under 80 words each) so the tool call fits the budget.'
+      : '\n\nIMPORTANT: your previous tool call was malformed — fields like `stakeholder_messages` and `visible_effects` must be emitted as separate top-level keys in the tool input, NOT packed into a single stringified blob. Re-emit the tool call with each field at the top level of the input object.';
 
   const retry = await client.messages.create(
     {
@@ -427,9 +457,7 @@ export async function callInnerClaude(params: {
       messages: [
         {
           role: 'user',
-          content:
-            userMessage +
-            '\n\nIMPORTANT: your previous response hit the token limit. Keep every prose field concise (visible_effects under 150 words, stakeholder messages under 80 words each) so the tool call fits the budget.',
+          content: userMessage + retryHint,
         },
       ],
     },
@@ -445,12 +473,14 @@ export async function callInnerClaude(params: {
   const retryUsage = retry.usage;
   const retryCost = computeCost(retry.model, retryUsage);
   const retryInput = extractToolInput(retry);
-  if (!isInnerClaudeResponse(retryInput)) {
+  const retryResponse = normalizeInnerClaudeResponse(retryInput);
+  if (!retryResponse) {
+    console.error('[inner-claude] retry tool input rejected by normalize:', JSON.stringify(retryInput));
     throw new Error('inner claude retry tool call did not match contract');
   }
 
   return {
-    response: retryInput,
+    response: retryResponse,
     modelUsed: retry.model,
     rawText: JSON.stringify(retryInput),
     usedCache,
