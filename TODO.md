@@ -4,28 +4,30 @@ Durable, cross-session list of remaining work. Ordered by leverage.
 
 ## Now — top of the stack
 
-- [ ] **Inner Claude contract guard rejects valid tool inputs intermittently.**
-      The fresh-eyes Sonnet agent hit `inner claude tool call did not match
-      contract` (the throw at `apps/web/lib/inner-claude.ts:401`) on roughly
-      half of first attempts during a real playthrough — confirmed by frame
-      08 of the captured demo. Likely cause: `isInnerClaudeResponse` is
-      stricter than the `emit_turn_response` tool's `input_schema`, so when
-      the model omits an empty optional field (or returns one as `null`
-      instead of `[]` / `{}`), the runtime guard rejects it but the API
-      doesn't. Regression from the tool_use migration in PR #14. Fix:
-      loosen the guard to accept partial responses and normalize defaults
-      inside `callInnerClaude` (missing `stakeholder_messages` → `[]`,
-      missing `environment_delta` → `{}`, etc).
-- [ ] **Page reload destroys session state.** `apps/web/app/play/[scenarioId]/PlayClient.tsx:140-142`
-      calls `startSession()` unconditionally on mount, with no URL/cookie
-      session restore. Hit F5 mid-scenario and you lose 30+ minutes of
-      progress. Fix: put `?session=<id>` in the URL after start, look it up
-      on mount, fall back to fresh start if absent.
-- [ ] **Demo GIF** in the README. Draft already generated at
-      `%TEMP%/fieldwork-demo/fieldwork-demo.gif` (12 curated frames, ~25s
-      loop, 1086 KB) using `scripts/stitch-demo-gif.py`. Needs review,
-      possibly re-recording after the contract bug is fixed so the run is
-      smoother, then commit to `apps/web/public/`.
+- [ ] **Last-turn work area narrative is lost on page reload.** Surfaced
+      by the v2 fresh-eyes playthrough on the patched build: turn counter,
+      cost, trust, objectives, and inbox all restore correctly via
+      `?session=<id>`, but the center work area is blank because
+      `lastEffects` (and `lastMeta`) live in `PlayClient.tsx` component
+      state and aren't fetched from the server on restore. Fix: persist
+      `lastResponseSummary` (already exists on the session) into the
+      `GET /api/session/[id]` response and seed `lastEffects` from it
+      on mount, OR re-render from the action log. Small follow-on to
+      the session URL persistence fix in #17.
+- [ ] **`retried` badge in turn metadata has no explanation.** The
+      contract guard fix added `retried: true` on turns where the inner
+      Claude tool call had to be re-issued. The metadata line now reads
+      `claude-haiku-4-5 · env · cached · retried` with no tooltip — a
+      curious user wonders if something broke. Either drop the badge
+      from the visible line entirely (the retry is meant to be silent)
+      or add a tooltip like "engine retried internally for a clean
+      response — no action needed."
+- [ ] **Demo GIF** in the README. Clean v2 draft at
+      `%TEMP%/fieldwork-demo-v2/fieldwork-demo.gif` (15 frames captured by
+      a fresh-eyes Sonnet playthrough on the patched build, 3076 KB at
+      960px). Needs review and copy to `apps/web/public/`. The v2 frames
+      include the launch_vs_testing_conflict and spam_reroute surprises
+      firing, the post-debrief flow, and the reload-restore in action.
 
 ## Engine
 

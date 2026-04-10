@@ -60,6 +60,7 @@ def main() -> int:
     frames: list[Image.Image] = []
     durations: list[int] = []
     missing: list[str] = []
+    matched_curated = 0
     for name, duration_ms in FRAME_ORDER:
         path = FRAMES_DIR / name
         if not path.exists():
@@ -67,6 +68,20 @@ def main() -> int:
             continue
         frames.append(load_and_resize(path))
         durations.append(duration_ms)
+        matched_curated += 1
+
+    # Fall back to lexical-order auto-discovery if the curated list didn't
+    # find enough frames (e.g. a different playthrough run with different
+    # screenshot names). Uniform 2200ms per frame.
+    if matched_curated < 5:
+        frames.clear()
+        durations.clear()
+        missing.clear()
+        auto_paths = sorted(p for p in FRAMES_DIR.glob("frame-*.png"))
+        for path in auto_paths:
+            frames.append(load_and_resize(path))
+            durations.append(2200)
+        print(f"auto-discovery: found {len(auto_paths)} frames in {FRAMES_DIR}")
 
     if missing:
         print(f"warning: missing frames skipped: {', '.join(missing)}")
