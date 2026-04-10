@@ -57,3 +57,11 @@ custom data generators and a README.
       move to a different bundler or bump to a Next version that handles it.
 - [ ] Sessions persist to a single JSON file (`data/sessions.json`), atomic
       write + rename. No concurrent writer support.
+- [ ] `pnpm lint` is broken — `next lint` is deprecated in Next 15 and drops
+      into an interactive ESLint setup prompt that also mutates `tsconfig.json`
+      and `next-env.d.ts` as a side effect. Migrate to the ESLint CLI:
+      `npx @next/codemod@canary next-lint-to-eslint-cli .`
+- [ ] `TurnCallResult.rawText` is now `JSON.stringify(toolInput)` since the
+      switch to tool_use — there's no raw text body anymore. Nothing reads it
+      today; revisit the field name if a debug panel ever wants the actual
+      assistant message.

@@ -9,28 +9,11 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { PlaySession } from './session-store';
 import type { ParsedScenario } from './scenario-loader';
 
-const DEBRIEF_MODEL = process.env.FIELDWORK_MODEL_DEBRIEF ?? 'claude-sonnet-4-5';
+const DEBRIEF_MODEL = process.env.FIELDWORK_MODEL_DEBRIEF ?? 'claude-sonnet-4-6';
 
 // Note: Sonnet for debrief. Haiku is too terse for narrative feedback.
 
-export interface DebriefResponse {
-  narrative: string;
-  modelUsed: string;
-}
-
-export async function generateDebrief(params: {
-  scenario: ParsedScenario;
-  session: PlaySession;
-}): Promise<DebriefResponse> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error('ANTHROPIC_API_KEY not configured');
-  }
-
-  const client = new Anthropic({ apiKey });
-  const { scenario, session } = params;
-
-  const system = `You are a senior forward-deployed engineer reviewing a junior colleague's work in a training simulator.
+const SYSTEM_PROMPT = `You are a senior forward-deployed engineer reviewing a junior colleague's work in a training simulator.
 
 Your critique MUST be specific. Every point you make must:
 1. Reference a specific turn by number (e.g., "In turn 3...")
@@ -47,6 +30,33 @@ Focus areas (cover the ones that actually apply to this run, not all of them):
 - Production readiness: what in their final approach would break in production?
 
 Return 4-6 paragraphs of prose — no markdown headings, no bullet lists. End with one sentence naming their single most important improvement area for the next run.`;
+
+let _client: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (_client) return _client;
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    throw new Error('ANTHROPIC_API_KEY not configured');
+  }
+  _client = new Anthropic({ apiKey });
+  return _client;
+}
+
+export interface DebriefResponse {
+  narrative: string;
+  modelUsed: string;
+}
+
+export async function generateDebrief(params: {
+  scenario: ParsedScenario;
+  session: PlaySession;
+}): Promise<DebriefResponse> {
+  const client = getClient();
+  const { scenario, session } = params;
+
+  const system: Anthropic.TextBlockParam[] = [
+    { type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } },
+  ];
 
   const trustLines = Object.entries(session.state.stakeholderTrust ?? {})
     .map(([id, trust]) => {
