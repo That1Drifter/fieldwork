@@ -112,10 +112,27 @@ FW_KEY=sk-ant-... ./scripts/deploy-staging.sh --set-key
 The server auto-sources `<FW_REMOTE_DIR>/.env` on every start, so you can
 also edit it directly over ssh and run `--restart`.
 
-**Your server is a shared target.** The app currently has no rate limiting
-or auth on `/api/turn` — anything that can reach the port can spend your
-Anthropic budget. Keep the port firewalled to trusted sources, or don't
-expose it to the public internet at all.
+### HTTP Basic Auth
+
+fieldwork ships with optional HTTP Basic Auth that gates every route except
+`/api/health`. It's **off by default** so local `pnpm dev` works with zero
+config — set a password to turn it on.
+
+```bash
+# Set Basic Auth credentials on the deploy target (writes to remote .env,
+# chmod 600, restarts the server):
+FW_AUTH_USER=you FW_AUTH_PASS=strong-password-here \
+  ./scripts/deploy-staging.sh --set-auth
+```
+
+Once set, the browser will prompt for credentials on first visit and cache
+them for the session. `curl` callers use `-u user:pass`. The health check
+endpoint stays unauthenticated so the deploy script's readiness probe and
+any external monitors still work.
+
+> **Important.** Without auth, the app has no rate limiting on `/api/turn`,
+> so anything that can reach the port can spend your Anthropic budget. If
+> you expose the server to the public internet at all, turn auth on.
 
 ## Self-host only
 

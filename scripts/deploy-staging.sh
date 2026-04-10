@@ -9,6 +9,8 @@
 #   FW_REMOTE_DIR=~/fieldwork    # where to install on the remote (default ~/fieldwork)
 #   FW_PORT=3005                 # port the Next.js server listens on (default 3005)
 #   FW_KEY=sk-...                # only read for --set-key
+#   FW_AUTH_USER=fieldwork       # only read for --set-auth
+#   FW_AUTH_PASS=<password>      # only read for --set-auth
 #
 # Tip: export FW_HOST (and friends) in your shell profile, or create a
 # gitignored `.env.deploy` at the repo root that you `source` before running.
@@ -21,6 +23,7 @@
 #   ./scripts/deploy-staging.sh --logs      # tail the server log
 #   ./scripts/deploy-staging.sh --env       # show env var names on remote (values redacted)
 #   FW_KEY=sk-... ./scripts/deploy-staging.sh --set-key   # write ANTHROPIC_API_KEY and restart
+#   FW_AUTH_USER=admin FW_AUTH_PASS=... ./scripts/deploy-staging.sh --set-auth   # write Basic Auth creds
 #
 # Env file on remote: $REMOTE_DIR/.env (chmod 600). Auto-sourced at server start.
 
@@ -84,6 +87,19 @@ set_key() {
   wait_for_ready
 }
 
+set_auth() {
+  if [[ -z "${FW_AUTH_PASS:-}" ]]; then
+    fail "FW_AUTH_PASS env var is required: FW_AUTH_USER=you FW_AUTH_PASS=... $0 --set-auth"
+  fi
+  local user="${FW_AUTH_USER:-fieldwork}"
+  log "writing FIELDWORK_AUTH_USER/PASS to $REMOTE_DIR/.env"
+  ssh "$HOST" "bash -c 'umask 077; mkdir -p $REMOTE_DIR; touch $REMOTE_DIR/.env; chmod 600 $REMOTE_DIR/.env; grep -vE \"^FIELDWORK_AUTH_(USER|PASS)=\" $REMOTE_DIR/.env > $REMOTE_DIR/.env.new || true; echo \"FIELDWORK_AUTH_USER=$user\" >> $REMOTE_DIR/.env.new; echo \"FIELDWORK_AUTH_PASS=$FW_AUTH_PASS\" >> $REMOTE_DIR/.env.new; mv $REMOTE_DIR/.env.new $REMOTE_DIR/.env'"
+  ok "auth creds stored (chmod 600, user=$user)"
+  stop_server
+  start_server
+  wait_for_ready
+}
+
 show_env() {
   log "env on remote (values redacted)"
   ssh "$HOST" "if [ -f $REMOTE_DIR/.env ]; then sed 's/=.*/=<redacted>/' $REMOTE_DIR/.env; else echo 'no .env file'; fi"
@@ -136,6 +152,9 @@ case "${1:-}" in
   --set-key)
     set_key
     ;;
+  --set-auth)
+    set_auth
+    ;;
   --fast)
     transfer
     build
@@ -153,7 +172,7 @@ case "${1:-}" in
     ;;
   *)
     echo "unknown option: $1" >&2
-    echo "usage: $0 [--fast|--restart|--stop|--logs|--env|--set-key]" >&2
+    echo "usage: $0 [--fast|--restart|--stop|--logs|--env|--set-key|--set-auth]" >&2
     exit 2
     ;;
 esac
