@@ -99,7 +99,7 @@ objectives:
     rubric:
       - match:
           action_kind: define_tools
-          payload_regex: "(?i)(crm|salesforce).*(billing|stripe).*(provision)"
+          payload_regex: "(crm|salesforce).*(billing|stripe).*(provision)"
         set: met
       - match:
           action_kind: define_tools
@@ -111,7 +111,7 @@ objectives:
     required: true
     rubric:
       - match:
-          payload_regex: "(?i)(rollback|compensat|saga|undo).*(retry|backoff|attempt)"
+          payload_regex: "(rollback|compensat|saga|undo).*(retry|backoff|attempt)"
         set: met
       - match:
           payload_contains: rollback
@@ -161,7 +161,7 @@ surprises:
   - id: provisioning_rate_limit
     trigger:
       type: action_pattern
-      pattern: "(?i)batch|bulk|parallel"
+      pattern: "batch|bulk|parallel"
     detail: >
       The provisioning API starts returning 429s under batch load — its real
       limit is 5 requests/second per tenant, undocumented. Backlog is growing

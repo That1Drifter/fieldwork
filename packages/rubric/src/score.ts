@@ -69,7 +69,7 @@ function ruleMatches(
     // fail closed at runtime rather than throwing mid-turn.
     let re: RegExp;
     try {
-      re = new RegExp(match.payload_regex);
+      re = new RegExp(match.payload_regex, 'i');
     } catch {
       return false;
     }

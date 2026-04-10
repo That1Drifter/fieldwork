@@ -48,11 +48,16 @@ function shouldFire(trigger: SurpriseTrigger, state: SimState): boolean {
         !!trigger.state &&
         state.objectives[trigger.objective] === trigger.state
       );
-    case 'action_pattern':
+    case 'action_pattern': {
       if (!trigger.pattern) return false;
-      return state.actionLog.some((a) =>
-        new RegExp(trigger.pattern!).test(JSON.stringify(a)),
-      );
+      let re: RegExp;
+      try {
+        re = new RegExp(trigger.pattern, 'i');
+      } catch {
+        return false;
+      }
+      return state.actionLog.some((a) => re.test(JSON.stringify(a)));
+    }
     case 'random':
       return Math.random() < (trigger.probability ?? 0);
     default:

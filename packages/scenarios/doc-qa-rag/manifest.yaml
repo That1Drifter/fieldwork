@@ -70,7 +70,7 @@ objectives:
     rubric:
       - match:
           action_kind: design
-          payload_regex: "(?i)chunk.{0,40}(size|overlap|strategy|token)"
+          payload_regex: "chunk.{0,40}(size|overlap|strategy|token)"
         set: attempted
   - id: retrieval_quality_threshold
     desc: >
@@ -85,7 +85,7 @@ objectives:
     discoverable: true
     rubric:
       - match:
-          payload_regex: "(?i)(cite|citation|source|attribution|provenance)"
+          payload_regex: "(cite|citation|source|attribution|provenance)"
         set: attempted
   - id: ambiguous_query_handling
     desc: >
@@ -117,7 +117,7 @@ surprises:
   - id: restricted_leak
     trigger:
       type: action_pattern
-      pattern: "(?i)(deploy|ship|launch|rollout|production)"
+      pattern: "(deploy|ship|launch|rollout|production)"
     detail: >
       A query about onboarding surfaces a paragraph from a GxP-controlled SOP
       that scientists outside the regulated org shouldn't see. Daniel
