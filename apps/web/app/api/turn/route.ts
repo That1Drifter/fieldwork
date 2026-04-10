@@ -5,6 +5,7 @@ import {
   type SurpriseRule,
   type TraineeAction,
 } from '@fieldwork/core';
+import { scoreTurn } from '@fieldwork/rubric';
 import { getSession, appendAction, updateSession } from '@/lib/session-store';
 import { loadAndSeed } from '@/lib/scenario-loader';
 import { callInnerClaude } from '@/lib/inner-claude';
@@ -86,10 +87,18 @@ export async function POST(request: Request) {
       ...(response.environment_delta.metric_changes ?? {}),
     };
 
-    const objectiveTransitions = extractObjectiveTransitions(
+    const innerClaudeTransitions = extractObjectiveTransitions(
       response.hidden_state_updates,
       scenario,
     );
+    const deterministicTransitions = scoreTurn({
+      action,
+      objectives: scenario.objectives,
+    });
+    const objectiveTransitions = {
+      ...innerClaudeTransitions,
+      ...deterministicTransitions,
+    };
     const mergedObjectives = { ...session.state.objectives, ...objectiveTransitions };
 
     const trustDeltas = extractTrustDeltas(response.hidden_state_updates, scenario);
@@ -143,6 +152,7 @@ export async function POST(request: Request) {
       retried,
       firedSurprises: firedBefore.map((s) => s.id),
       objectiveTransitions,
+      deterministicTransitions,
       trustDeltas,
       newDiscoveries,
       turnCostUsd: costUsd,
