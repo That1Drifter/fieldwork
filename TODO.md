@@ -4,22 +4,48 @@ Durable, cross-session list of remaining work. Ordered by leverage.
 
 ## Now — top of the stack
 
-- [ ] **"Back to scenarios" navigation** from `/play/[scenarioId]` and the
-      debrief view. Currently a user who finishes a scenario cannot start
-      another one without editing the URL or hitting browser back. This is
-      a broken flow, not polish. Add a header link/button on both screens.
-- [ ] **Fix `pnpm lint`** — `next lint` is deprecated in Next 15 and drops
-      into an interactive ESLint setup prompt that also mutates `tsconfig.json`
-      and `next-env.d.ts` as a side effect. Bites every deploy. Migrate to
-      the ESLint CLI: `npx @next/codemod@canary next-lint-to-eslint-cli .`
-- [ ] **Demo GIF** in the README showing a full discovery-rich turn → trust
-      movement → objective reveal → debrief → next scenario flow. Gated on
-      the back-nav fix above so the loop closes cleanly.
+- [ ] **Staging server is OOM-killed under modest load.** Six SIGKILL events
+      (exit 137) on the staging box on 2026-04-10 alone, including twice
+      mid-playthrough during a fresh-eyes Sonnet evaluation. Surfaced from
+      `~/fieldwork/server.log` on the staging host. Two things to root-cause:
+      (a) why is Next.js running out of memory — check `free -m` on the box,
+      profile RSS over a session, see if the prompt cache or session-store
+      is leaking; (b) does `apps/web/lib/session-store.ts` rehydrate from
+      `data/sessions.json` on startup? If not, every OOM kill silently
+      destroys all in-flight sessions even though the JSON file is on disk.
+- [ ] **Inner Claude contract guard rejects valid tool inputs intermittently.**
+      The fresh-eyes Sonnet agent hit `inner claude tool call did not match
+      contract` (the throw at `apps/web/lib/inner-claude.ts:401`) on roughly
+      half of first attempts during a real playthrough — confirmed by frame
+      08 of the captured demo. Likely cause: `isInnerClaudeResponse` is
+      stricter than the `emit_turn_response` tool's `input_schema`, so when
+      the model omits an empty optional field (or returns one as `null`
+      instead of `[]` / `{}`), the runtime guard rejects it but the API
+      doesn't. Regression from the tool_use migration in PR #14. Fix:
+      loosen the guard to accept partial responses and normalize defaults
+      inside `callInnerClaude` (missing `stakeholder_messages` → `[]`,
+      missing `environment_delta` → `{}`, etc).
+- [ ] **Page reload destroys session state.** `apps/web/app/play/[scenarioId]/PlayClient.tsx:140-142`
+      calls `startSession()` unconditionally on mount, with no URL/cookie
+      session restore. Hit F5 mid-scenario and you lose 30+ minutes of
+      progress. Fix: put `?session=<id>` in the URL after start, look it up
+      on mount, fall back to fresh start if absent. Verify `session-store`
+      rehydrates from disk on server startup at the same time — see the
+      OOM item above.
+- [ ] **Demo GIF** in the README. Draft already generated at
+      `%TEMP%/fieldwork-demo/fieldwork-demo.gif` (12 curated frames, ~25s
+      loop, 1086 KB) using `scripts/stitch-demo-gif.py`. Needs review,
+      possibly re-recording after the contract bug is fixed so the run is
+      smoother, then commit to `apps/web/public/`.
 
 ## Engine
 
 - [ ] **Inner Claude streaming** — turn responses currently block the UI for
-      5-15s. Stream the JSON delta so `visible_effects` appears as it generates.
+      5-15s with a static work area. No spinner, no progress, no elapsed
+      time — a real user thinks it crashed and clicks again. The fresh-eyes
+      run flagged this as a real friction point. Stream the JSON delta so
+      `visible_effects` appears as it generates. If streaming is too big a
+      lift, at minimum add a spinner + elapsed-time indicator as a stopgap.
       Hits every turn, biggest perceived-perf win.
 - [ ] **Action log server-side summarization** — the action log grows without
       bound; past ~20 turns it bloats the prompt. Theoretical today (every
@@ -32,6 +58,29 @@ Durable, cross-session list of remaining work. Ordered by leverage.
 
 ## Polish / nice-to-haves
 
+- [ ] **Debrief visual structure.** The debrief is the strongest part of
+      the product (specific, turn-referenced, concrete alternatives) but
+      it's rendered as 6 dense paragraphs of prose with no headers, no
+      per-turn anchors, no objective badges. Quote from the fresh-eyes
+      run: *"the current presentation undersells the quality of the
+      critique."* Add H3 per turn, colored objective badges, a top-line
+      summary callout. Highest-leverage polish item.
+- [ ] **Trust delta indicators.** Trust bars in the briefing panel show
+      only the current value. Add a delta-since-last-turn (e.g.
+      `0.55 ↓ from 0.58`) or a small sparkline so trainees can connect
+      individual actions to trust movement without scrolling the action log.
+- [ ] **Cost spike tooltip.** When a surprise fires and the model upgrades
+      to Sonnet, the per-turn cost can 4× without explanation. Add a hover
+      tooltip on the cost display: `Turn N: $X.XXXX (Sonnet — surprise fired)`.
+- [ ] **Objective state badges.** `[open]`, `[attempted]`, `[met]`, `[failed]`
+      currently render as low-contrast bracketed text. Use colored pills
+      (gray / amber / green / red) so `[met]` feels celebratory and
+      `[failed]` reads as a warning at a glance.
+- [ ] **Action log auto-expand on final turn / debrief.** Currently the
+      `Action log (N) ▸` button is collapsed by default and never auto-opens.
+      Easy to miss its purpose entirely. Either auto-expand after the
+      debrief renders, or rename the label to something more discoverable
+      like `View turn history ▸`.
 - [ ] Mobile layout for `/play/[scenarioId]` (currently desktop-first)
 - [ ] Branding pass — logo, better favicon than the "f" ImageResponse
 - [ ] Keyboard shortcut: `Cmd/Ctrl+Enter` to run turn from the textarea
@@ -49,6 +98,33 @@ Durable, cross-session list of remaining work. Ordered by leverage.
       switch to tool_use — there's no raw text body anymore. Nothing reads it
       today; revisit the field name if a debug panel ever wants the actual
       assistant message.
+- [ ] **gstack browse auth strategy.** Cannot QA the auth-gated app via
+      `$B goto http://user:pass@host/` because Chromium/Playwright then
+      attaches credentials to relative `fetch()` URLs and the browser
+      refuses to construct the request (`Request cannot be constructed
+      from a URL that includes credentials`). Caused at least one
+      false-positive bug report. Use a header-based auth strategy for
+      future browse smoke tests, or temporarily disable basic auth on
+      staging during QA runs.
+
+### Verified false alarms (do not re-investigate)
+
+These were flagged during the fresh-eyes playthrough but verified as
+either tooling artifacts or misreads. Listed so future reviews don't
+re-open them.
+
+- Picker scenario card click "doesn't navigate" — refuted by Playwright
+  in real Chromium, the cards are proper `<a href>` Links. Was an
+  artifact of the basic-auth-via-URL fetch issue above.
+- Debrief button "submits a turn" — `runDebrief` in `PlayClient.tsx:185`
+  doesn't read the prompt textbox. The agent saw the shared `loading`
+  spinner and conflated it with a turn submission.
+- `(?i)(deploy|ship|launch|rollout|production)` regex SyntaxError —
+  fixed in `d791a3d` (case-insensitive flag + try/catch on
+  `surprises.ts`, `(?i)` literals stripped from manifests). Stale log
+  entries from a pre-fix build.
+- Reset button has no confirmation guard — actually does, see
+  `PlayClient.tsx:236` (`window.confirm` when `state.turn > 0`).
 
 ## Done
 
@@ -63,3 +139,8 @@ Durable, cross-session list of remaining work. Ordered by leverage.
       and rate limiting in a deployed Claude system under time pressure.
 - [x] **Stakeholder conflict surprise** — Priya wants to launch, Marcus wants
       more testing. Manifest edit + prompt hint on `support-triage`.
+- [x] **Back-to-scenarios navigation** — header link on `/play/[scenarioId]`
+      and "Pick another scenario →" CTA below the debrief. Shipped in PR #15.
+- [x] **Migrate `pnpm lint` to flat-config ESLint CLI** — `next lint` was
+      deprecated and mutating `tsconfig.json` as a side effect. Shipped in
+      PR #15.
