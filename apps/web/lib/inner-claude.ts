@@ -51,10 +51,10 @@ const PRICING: Record<string, { in: number; out: number; cacheWrite: number; cac
 function computeCost(
   model: string,
   usage: {
-    input_tokens?: number;
-    output_tokens?: number;
-    cache_creation_input_tokens?: number;
-    cache_read_input_tokens?: number;
+    input_tokens?: number | null;
+    output_tokens?: number | null;
+    cache_creation_input_tokens?: number | null;
+    cache_read_input_tokens?: number | null;
   },
 ): number {
   const key = Object.keys(PRICING).find((k) => model.startsWith(k));
@@ -299,17 +299,14 @@ export async function callInnerClaude(params: {
     params.firedSurprises,
   );
 
-  // cache_control is supported at runtime in SDK 0.32.x but the static types
-  // lag behind. Cast through unknown to satisfy the compiler while keeping
-  // the rest of the call fully typed.
-  const system = [
+  const system: Anthropic.TextBlockParam[] = [
     { type: 'text', text: CONTRACT },
     {
       type: 'text',
       text: cachedContext,
       cache_control: { type: 'ephemeral' },
     },
-  ] as unknown as Anthropic.TextBlockParam[];
+  ];
 
   const FIRST_MAX_TOKENS = 4096;
   const RETRY_MAX_TOKENS = 8192;
@@ -322,10 +319,7 @@ export async function callInnerClaude(params: {
   });
 
   const firstText = extractText(firstCall);
-  const firstUsage = firstCall.usage as Anthropic.Usage & {
-    cache_read_input_tokens?: number;
-    cache_creation_input_tokens?: number;
-  };
+  const firstUsage = firstCall.usage;
   const usedCache =
     (firstUsage.cache_read_input_tokens ?? 0) > 0 ||
     (firstUsage.cache_creation_input_tokens ?? 0) > 0;
@@ -392,10 +386,7 @@ export async function callInnerClaude(params: {
     );
   }
 
-  const retryUsage = retry.usage as Anthropic.Usage & {
-    cache_read_input_tokens?: number;
-    cache_creation_input_tokens?: number;
-  };
+  const retryUsage = retry.usage;
   const retryCost = computeCost(retry.model, retryUsage);
 
   const response = parseResponse(retryText);
