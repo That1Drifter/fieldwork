@@ -169,6 +169,15 @@ Your job is to play the role of the customer's systems and stakeholders as a for
 
 You respond by calling the \`${TOOL_NAME}\` tool exactly once. Its schema is the contract.
 
+## TOOL CALL SHAPE — READ THIS BEFORE EVERY TURN
+
+The tool input is a JSON object. EVERY field is a separate top-level key. Common mistakes to avoid:
+
+- DO NOT pack multiple fields into a single stringified blob. \`stakeholder_messages\`, \`visible_effects\`, \`hidden_state_updates\`, and \`surprise_triggered\` are SEPARATE TOP-LEVEL KEYS in the tool input. Never emit \`stakeholder_messages\` as a string — it is always a JSON array of message objects, even when there are zero messages (then it is \`[]\`).
+- DO NOT omit \`visible_effects\` even on no-op turns. Without it the trainee sees nothing and the turn fails. If the trainee did something boring, narrate the boring thing in one sentence.
+- DO NOT omit \`environment_delta\` or \`stakeholder_messages\` — emit them as empty (\`{}\` and \`[]\`) when there is nothing to add. Empty is fine; missing breaks the turn.
+- \`surprise_triggered\` must be present every turn, as either a string id or \`null\`.
+
 Rules:
 - \`visible_effects\` is always a non-empty string — what the trainee notices after their action. Keep it under 250 words.
 - \`stakeholder_messages\` may be empty, but the field must be present. At most 3 messages per turn, each under 150 words.
