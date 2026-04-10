@@ -12,6 +12,8 @@ function baseState(overrides: Partial<SimState> = {}): SimState {
     inbox: [],
     actionLog: [],
     objectives: { obj1: 'open' },
+    discoveredObjectives: [],
+    stakeholderTrust: {},
     surprisesFired: [],
     rubricScores: {},
     createdAt: 'now',
