@@ -28,9 +28,6 @@ custom data generators and a README.
       launch for a quarterly goal and Marcus wants more testing. Engine
       already supports surprise injection; this is a manifest edit plus a
       prompt hint. Content, not engine work.
-- [ ] **Per-turn deterministic rubric checks** — `@fieldwork/rubric/score` is
-      scaffolded but not wired. Implement pattern-based objective transitions
-      so scoring doesn't rely 100% on inner Claude judgment.
 - [ ] **Inner Claude streaming** — turn responses currently block the UI for
       5-15s. Stream the JSON delta so `visible_effects` appears as it generates.
 - [ ] **SQLite persistence** — the JSON file store works but doesn't scale to
