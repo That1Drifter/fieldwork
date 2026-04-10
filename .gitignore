@@ -37,3 +37,4 @@ data/sessions.json
 
 # Local-only
 resume-claude.bat
+.gstack/
