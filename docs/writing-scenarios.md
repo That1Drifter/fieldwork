@@ -52,6 +52,41 @@ Each entry in `objectives`:
 See [`support-triage/manifest.yaml`](../packages/scenarios/support-triage/manifest.yaml)
 for a fully worked example covering all fields.
 
+## Objective `rubric` rules
+
+Objectives can carry a `rubric` array of deterministic rules that run every
+turn. The first matching rule sets the objective state, overriding inner
+Claude's judgment for that turn. Each rule has a `match` block and a `set`
+value (`open` | `attempted` | `met` | `failed`).
+
+`match` fields (all specified conditions must match):
+
+- `action_kind` — exact match on `action.kind`
+- `payload_contains` — case-insensitive substring match against the
+  JSON-serialized action payload
+- `payload_regex` — regex tested against the JSON-serialized payload. **Written
+  as plain regex — do NOT prefix with `(?i)` or any inline flag.** The engine
+  constructs patterns with the JavaScript `i` flag automatically, and inline
+  flags like `(?i)` are Perl-flavor and will crash the turn handler if the
+  engine didn't also fail closed. A malformed pattern now fails closed (the
+  rule skips instead of firing), but still — keep patterns plain.
+
+Rules should only upgrade state (`open → attempted → met`); the engine does
+not prevent downgrades.
+
+## Surprise triggers
+
+The `surprises` array defines mid-scenario twists. Each surprise has an `id`,
+a `trigger`, a `detail` string, and optional `visible`, `channel`, and `from`
+fields. Trigger types:
+
+- `turn_count` — `value: N` fires at or after turn N
+- `objective_state` — `objective: <id>, state: <state>` fires when the named
+  objective reaches that state
+- `action_pattern` — `pattern: <regex>` fires when the serialized action log
+  matches. Case-insensitive; no inline flags; fails closed on malformed input.
+- `random` — `probability: 0.3` fires stochastically per turn
+
 ## Quality checklist
 
 - [ ] The trainee objective is specific and measurable

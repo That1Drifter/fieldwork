@@ -132,7 +132,8 @@ Trigger types:
 
 - `turn_count` — fires at or after a specific turn number
 - `objective_state` — fires when a named objective reaches a target state
-- `action_pattern` — fires when the action log matches a regex
+- `action_pattern` — fires when the action log matches a regex (case-insensitive,
+  fails closed on a malformed pattern)
 - `random` — fires with a given probability (per turn)
 
 Already-fired ids are tracked in `state.surprisesFired` and never fire twice.
@@ -145,10 +146,18 @@ Unit-tested in `packages/core/src/__tests__/surprises.test.ts`.
 
 Two-tier scoring:
 
-- **Per-turn** — LLM-driven via inner Claude returning
-  `hidden_state_updates.objective_transitions`. The engine validates and
-  merges these into `state.objectives`. Deterministic pattern-based checks in
-  `@fieldwork/rubric/score` are scaffolded but not wired yet (TODO).
+- **Per-turn** — two paths run in parallel and the deterministic one wins when
+  both fire on the same objective:
+  - Inner Claude proposes objective state transitions via
+    `hidden_state_updates.objective_transitions`. The engine validates and
+    merges these into `state.objectives`.
+  - Manifest-level `rubric` rules on each objective run through
+    `@fieldwork/rubric/score`. A rule matches on `action_kind`,
+    `payload_contains` (case-insensitive substring), or `payload_regex`
+    (case-insensitive regex, fails closed on malformed patterns). The first
+    matching rule sets the objective state and overrides inner Claude's
+    judgment for the turn. Rules should only upgrade state
+    (`open → attempted → met`); the engine does not prevent downgrades.
 - **End-of-scenario** — `@fieldwork/rubric/debrief` sends the full action log,
   final objective states, stakeholder trust, and discovered/undiscovered
   splits to Sonnet. The prompt demands every critique cite a specific turn,
