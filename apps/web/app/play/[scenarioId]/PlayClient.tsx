@@ -68,6 +68,7 @@ interface StartResponse {
   ticketsPreview: Ticket[];
   turnBudget: number | null;
   cumulativeCostUsd: number;
+  lastResponseSummary?: string | null;
 }
 
 interface TurnApiResponse {
@@ -118,12 +119,13 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
     setTicketCount(data.ticketCount);
     setTurnBudget(data.turnBudget);
     setCumulativeCost(data.cumulativeCostUsd ?? 0);
+    setLastEffects(data.lastResponseSummary ?? '');
+    setLastMeta(null);
   }, []);
 
   const startSession = useCallback(async () => {
     setError(null);
     setDebrief(null);
-    setLastEffects('');
     try {
       const res = await fetch('/api/session/start', {
         method: 'POST',
@@ -144,7 +146,6 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
     async (id: string): Promise<boolean> => {
       setError(null);
       setDebrief(null);
-      setLastEffects('');
       try {
         const res = await fetch(`/api/session/${id}`);
         if (res.status === 404) return false;

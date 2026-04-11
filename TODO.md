@@ -4,16 +4,6 @@ Durable, cross-session list of remaining work. Ordered by leverage.
 
 ## Now — top of the stack
 
-- [ ] **Last-turn work area narrative is lost on page reload.** Surfaced
-      by the v2 fresh-eyes playthrough on the patched build: turn counter,
-      cost, trust, objectives, and inbox all restore correctly via
-      `?session=<id>`, but the center work area is blank because
-      `lastEffects` (and `lastMeta`) live in `PlayClient.tsx` component
-      state and aren't fetched from the server on restore. Fix: persist
-      `lastResponseSummary` (already exists on the session) into the
-      `GET /api/session/[id]` response and seed `lastEffects` from it
-      on mount, OR re-render from the action log. Small follow-on to
-      the session URL persistence fix in #17.
 - [ ] **`retried` badge in turn metadata has no explanation.** The
       contract guard fix added `retried: true` on turns where the inner
       Claude tool call had to be re-issued. The metadata line now reads
@@ -141,6 +131,10 @@ re-open them.
       via new GET `/api/session/[id]`, fall back to fresh start on 404.
       Shipped in PR #17. Verified by v2 fresh-eyes playthrough: mid-scenario
       reload preserved turn counter, cost, trust, objectives, inbox.
+- [x] **Restore last-turn work area on page reload** — `GET /api/session/[id]`
+      now returns `lastResponseSummary` and `PlayClient` seeds `lastEffects`
+      from it in `applySessionData`. Verified against a real persisted
+      session via Playwright.
 - [x] **Demo GIF in README** — `docs/demo.gif`, 15 frames from a fresh-eyes
       Sonnet playthrough on the patched build. Both surprise events visible,
       reload-restore visible, debrief and back-nav visible.
