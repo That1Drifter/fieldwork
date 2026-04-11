@@ -2,36 +2,17 @@
 
 Durable, cross-session list of remaining work. Ordered by leverage.
 
-## Now — top of the stack
-
-- [ ] **Last-turn work area narrative is lost on page reload.** Surfaced
-      by the v2 fresh-eyes playthrough on the patched build: turn counter,
-      cost, trust, objectives, and inbox all restore correctly via
-      `?session=<id>`, but the center work area is blank because
-      `lastEffects` (and `lastMeta`) live in `PlayClient.tsx` component
-      state and aren't fetched from the server on restore. Fix: persist
-      `lastResponseSummary` (already exists on the session) into the
-      `GET /api/session/[id]` response and seed `lastEffects` from it
-      on mount, OR re-render from the action log. Small follow-on to
-      the session URL persistence fix in #17.
-- [ ] **`retried` badge in turn metadata has no explanation.** The
-      contract guard fix added `retried: true` on turns where the inner
-      Claude tool call had to be re-issued. The metadata line now reads
-      `claude-haiku-4-5 · env · cached · retried` with no tooltip — a
-      curious user wonders if something broke. Either drop the badge
-      from the visible line entirely (the retry is meant to be silent)
-      or add a tooltip like "engine retried internally for a clean
-      response — no action needed."
-
 ## Engine
 
-- [ ] **Inner Claude streaming** — turn responses currently block the UI for
-      5-15s with a static work area. No spinner, no progress, no elapsed
-      time — a real user thinks it crashed and clicks again. The fresh-eyes
-      run flagged this as a real friction point. Stream the JSON delta so
-      `visible_effects` appears as it generates. If streaming is too big a
-      lift, at minimum add a spinner + elapsed-time indicator as a stopgap.
-      Hits every turn, biggest perceived-perf win.
+- [ ] **Inner Claude streaming** — full SSE streaming of `visible_effects`
+      as the tool input generates is still the win. Stopgap (spinner +
+      elapsed-time ticker) is shipped, so the UI no longer feels frozen,
+      but a real stream would let the trainee start reading the narrative
+      mid-flight instead of waiting 5-15s for the full response. Requires
+      switching to `client.messages.stream`, buffering `input_json_delta`
+      events on the tool_use block, and either parsing partial JSON
+      server-side or streaming a sentinel-delimited prose channel
+      separate from the structured tool input.
 - [ ] **Action log server-side summarization** — the action log grows without
       bound; past ~20 turns it bloats the prompt. Theoretical today (every
       shipped scenario has `turn_budget` ≤ 15) but becomes real the moment
@@ -43,13 +24,6 @@ Durable, cross-session list of remaining work. Ordered by leverage.
 
 ## Polish / nice-to-haves
 
-- [ ] **Debrief visual structure.** The debrief is the strongest part of
-      the product (specific, turn-referenced, concrete alternatives) but
-      it's rendered as 6 dense paragraphs of prose with no headers, no
-      per-turn anchors, no objective badges. Quote from the fresh-eyes
-      run: *"the current presentation undersells the quality of the
-      critique."* Add H3 per turn, colored objective badges, a top-line
-      summary callout. Highest-leverage polish item.
 - [ ] **Trust delta indicators.** Trust bars in the briefing panel show
       only the current value. Add a delta-since-last-turn (e.g.
       `0.55 ↓ from 0.58`) or a small sparkline so trainees can connect
@@ -141,6 +115,27 @@ re-open them.
       via new GET `/api/session/[id]`, fall back to fresh start on 404.
       Shipped in PR #17. Verified by v2 fresh-eyes playthrough: mid-scenario
       reload preserved turn counter, cost, trust, objectives, inbox.
+- [x] **Debrief visual structure** — switched the debrief Sonnet call to
+      tool use with a structured shape (`summary`, `turn_critiques[]`,
+      `closing_focus`) and rebuilt the renderer with a top-line summary
+      callout, an objective-pill row derived from session state
+      (green/red/amber/dashed-gray for met/failed/attempted/never-discovered),
+      H3 turn-headlines with "What you did" / "Try instead" sections,
+      and a closing-focus callout. Verified end-to-end via Playwright
+      with a mocked API response.
+- [x] **Turn-loading spinner + elapsed-time ticker** — work area now
+      shows an animated spinner with a live "Running turn… 1.5s" ticker
+      while a turn or debrief is in flight, so the UI no longer looks
+      frozen during the 5-15s API round-trip. Stopgap for full streaming;
+      verified end-to-end via Playwright with a slowed fetch.
+- [x] **`retried` badge tooltip** — wraps the badge in a span with a
+      `title` attribute and dotted underline so a curious user gets
+      "engine retried internally for a clean response — no action
+      needed" on hover instead of wondering if something broke.
+- [x] **Restore last-turn work area on page reload** — `GET /api/session/[id]`
+      now returns `lastResponseSummary` and `PlayClient` seeds `lastEffects`
+      from it in `applySessionData`. Verified against a real persisted
+      session via Playwright.
 - [x] **Demo GIF in README** — `docs/demo.gif`, 15 frames from a fresh-eyes
       Sonnet playthrough on the patched build. Both surprise events visible,
       reload-restore visible, debrief and back-nav visible.

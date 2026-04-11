@@ -60,8 +60,11 @@ pnpm test
   `random` triggers
 - Turn budget + cumulative USD cost display
 - Collapsible action log viewer
-- End-of-scenario debrief with turn-specific, alternative-prompt critiques
-- JSON file session persistence (survives server restart)
+- End-of-scenario debrief with structured per-turn critiques (summary
+  callout, objective pills, "what you did" / "try instead" cards, focus)
+- JSON file session persistence — survives server restart and rehydrates
+  in the browser via `?session=<id>` (turn counter, cost, trust,
+  objectives, inbox, last-turn narrative all restore)
 - `fieldwork validate` CLI wired to the scenario schema
 
 See [TODO.md](../TODO.md) for what's left to build.

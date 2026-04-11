@@ -165,13 +165,21 @@ Working:
 - Surprise engine with `turn_count`, `objective_state`, `action_pattern`, and
   `random` triggers
 - Collapsible action log viewer
-- End-of-scenario debrief with turn-specific, alternative-prompt critiques
+- End-of-scenario debrief with structured per-turn critiques: top-line
+  summary, objective-state pill row, "what you did" / "try instead" cards
+  per turn, and a single-focus closing callout
+- Session reload restoration via `?session=<id>` — turn counter, cost,
+  trust, objectives, inbox, and the last-turn work-area narrative all
+  rehydrate from the server
+- Turn-loading spinner with live elapsed-time ticker so the UI never
+  looks frozen during the API round-trip
 - `fieldwork validate` CLI wired to the scenario schema
 - 34 passing unit tests across core, rubric, and scenarios
 
 Not yet built (see [TODO.md](TODO.md)):
 
-- Inner Claude response streaming (currently blocks the UI 5–15s per turn)
+- Inner Claude response streaming (the spinner stopgap is in; the full
+  stream of `visible_effects` mid-flight is the real win)
 - SQLite session persistence (to replace the single-writer JSON file store)
 - Action log summarization for long runs (prompt bloats past ~20 turns)
 - Cross-session history and analytics

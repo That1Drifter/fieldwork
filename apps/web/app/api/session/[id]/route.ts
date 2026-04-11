@@ -27,5 +27,6 @@ export async function GET(
     ticketsPreview: session.tickets.slice(0, 20),
     turnBudget: scenario.turn_budget ?? null,
     cumulativeCostUsd: session.cumulativeCostUsd,
+    lastResponseSummary: session.lastResponseSummary ?? null,
   });
 }
