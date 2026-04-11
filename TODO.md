@@ -2,17 +2,6 @@
 
 Durable, cross-session list of remaining work. Ordered by leverage.
 
-## Now — top of the stack
-
-- [ ] **`retried` badge in turn metadata has no explanation.** The
-      contract guard fix added `retried: true` on turns where the inner
-      Claude tool call had to be re-issued. The metadata line now reads
-      `claude-haiku-4-5 · env · cached · retried` with no tooltip — a
-      curious user wonders if something broke. Either drop the badge
-      from the visible line entirely (the retry is meant to be silent)
-      or add a tooltip like "engine retried internally for a clean
-      response — no action needed."
-
 ## Engine
 
 - [ ] **Inner Claude streaming** — turn responses currently block the UI for
@@ -131,6 +120,10 @@ re-open them.
       via new GET `/api/session/[id]`, fall back to fresh start on 404.
       Shipped in PR #17. Verified by v2 fresh-eyes playthrough: mid-scenario
       reload preserved turn counter, cost, trust, objectives, inbox.
+- [x] **`retried` badge tooltip** — wraps the badge in a span with a
+      `title` attribute and dotted underline so a curious user gets
+      "engine retried internally for a clean response — no action
+      needed" on hover instead of wondering if something broke.
 - [x] **Restore last-turn work area on page reload** — `GET /api/session/[id]`
       now returns `lastResponseSummary` and `PlayClient` seeds `lastEffects`
       from it in `applySessionData`. Verified against a real persisted

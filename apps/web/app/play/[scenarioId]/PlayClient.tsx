@@ -442,7 +442,18 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
                 <div className="mt-2 text-sm uppercase tracking-wider text-neutral-600">
                   {lastMeta.modelUsed} · {lastMeta.tier}
                   {lastMeta.usedCache && ' · cached'}
-                  {lastMeta.retried && ' · retried'}
+                  {lastMeta.retried && (
+                    <>
+                      {' · '}
+                      <span
+                        title="Engine retried internally for a clean response — no action needed."
+                        className="cursor-help underline decoration-dotted underline-offset-2"
+                        data-testid="retried-badge"
+                      >
+                        retried
+                      </span>
+                    </>
+                  )}
                   {lastMeta.firedSurprises.length > 0 &&
                     ` · surprise: ${lastMeta.firedSurprises.join(', ')}`}
                 </div>
