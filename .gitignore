@@ -39,3 +39,4 @@ data/sessions.json
 resume-claude.bat
 .gstack/
 .playwright-mcp/
+.claude/
