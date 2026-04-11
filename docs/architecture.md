@@ -158,10 +158,15 @@ Two-tier scoring:
     matching rule sets the objective state and overrides inner Claude's
     judgment for the turn. Rules should only upgrade state
     (`open → attempted → met`); the engine does not prevent downgrades.
-- **End-of-scenario** — `@fieldwork/rubric/debrief` sends the full action log,
+- **End-of-scenario** — `apps/web/lib/debrief.ts` sends the full action log,
   final objective states, stakeholder trust, and discovered/undiscovered
-  splits to Sonnet. The prompt demands every critique cite a specific turn,
-  quote what the trainee did, and propose a concrete alternative prompt.
+  splits to Sonnet via the `emit_debrief` tool call. The structured output
+  is `{ summary, turn_critiques[], closing_focus }` — the prompt demands
+  every `turn_critiques` entry cite a specific turn, paraphrase what the
+  trainee did, and propose a concrete alternative. The web client renders
+  this as a top-line summary callout, an objective-pill row derived from
+  session state, per-turn critique cards, and a closing focus callout —
+  no parsing of free-form prose.
 
 ## Model tiering
 
