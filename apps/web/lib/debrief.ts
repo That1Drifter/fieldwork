@@ -1,8 +1,11 @@
 /**
  * End-of-scenario debrief generation.
  *
- * Passes the full action log to Sonnet and asks for narrative feedback on
- * the trainee's handling of the scenario. No Batch API yet (that's Phase 2).
+ * Passes the full action log to Sonnet and asks for structured feedback on
+ * the trainee's handling of the scenario via tool use. The outer shell
+ * renders the structure (summary callout, per-turn critiques with H3
+ * headlines, closing focus) so the prose doesn't have to carry layout
+ * inside markdown.
  */
 
 import Anthropic from '@anthropic-ai/sdk';
@@ -13,12 +16,68 @@ const DEBRIEF_MODEL = process.env.FIELDWORK_MODEL_DEBRIEF ?? 'claude-sonnet-4-6'
 
 // Note: Sonnet for debrief. Haiku is too terse for narrative feedback.
 
+const TOOL_NAME = 'emit_debrief';
+
+const DEBRIEF_TOOL: Anthropic.Tool = {
+  name: TOOL_NAME,
+  description:
+    "Emit the trainee's debrief as a structured object. Call this exactly once.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      summary: {
+        type: 'string',
+        description:
+          '1-2 sentence top-line takeaway. State the headline judgment of the run.',
+      },
+      turn_critiques: {
+        type: 'array',
+        description:
+          'Between 3 and 6 critiques. Pick the turns where you have something specific to say — do not critique every turn. Each critique points at one turn, paraphrases what the trainee did, and proposes a concrete alternative.',
+        items: {
+          type: 'object',
+          properties: {
+            turn: {
+              type: 'integer',
+              description: 'Turn number this critique addresses.',
+            },
+            headline: {
+              type: 'string',
+              description:
+                'Short label, under 10 words, summarizing the lesson. e.g. "Skipped clarification on subject classification".',
+            },
+            what_they_did: {
+              type: 'string',
+              description:
+                '1-3 sentences. Paraphrase what the trainee actually said or did this turn and why it mattered.',
+            },
+            alternative: {
+              type: 'string',
+              description:
+                '1-3 sentences. The concrete alternative phrasing or approach they could have used. Be specific enough that the trainee could paste it.',
+            },
+          },
+          required: ['turn', 'headline', 'what_they_did', 'alternative'],
+        },
+      },
+      closing_focus: {
+        type: 'string',
+        description:
+          'One sentence naming the single most important improvement area for the next run.',
+      },
+    },
+    required: ['summary', 'turn_critiques', 'closing_focus'],
+  },
+};
+
 const SYSTEM_PROMPT = `You are a senior forward-deployed engineer reviewing a junior colleague's work in a training simulator.
 
-Your critique MUST be specific. Every point you make must:
-1. Reference a specific turn by number (e.g., "In turn 3...")
-2. Quote or closely paraphrase what the trainee actually said or did on that turn
-3. Propose a concrete alternative — the actual phrasing or approach they could have used instead
+Call the \`${TOOL_NAME}\` tool exactly once. Its schema is the contract.
+
+Your critique MUST be specific. Every \`turn_critiques\` entry must:
+1. Reference a specific turn by number
+2. Paraphrase what the trainee actually said or did on that turn (in \`what_they_did\`)
+3. Propose a concrete alternative — the actual phrasing or approach they could have used instead (in \`alternative\`)
 
 Generic advice like "ask more questions" or "be more careful" is forbidden. If you cannot point at a specific turn and give a concrete alternative, drop the point.
 
@@ -29,7 +88,7 @@ Focus areas (cover the ones that actually apply to this run, not all of them):
 - Efficiency: which specific turns were wasted, and what should have happened instead?
 - Production readiness: what in their final approach would break in production?
 
-Return 4-6 paragraphs of prose — no markdown headings, no bullet lists. End with one sentence naming their single most important improvement area for the next run.`;
+Return 3-6 turn critiques — only the turns where you have something specific to say. The \`summary\` should be a punchy 1-2 sentence top-line judgment of the whole run. The \`closing_focus\` should be one sentence naming the single most important improvement area for the next run.`;
 
 let _client: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -42,8 +101,17 @@ function getClient(): Anthropic {
   return _client;
 }
 
+export interface DebriefTurnCritique {
+  turn: number;
+  headline: string;
+  what_they_did: string;
+  alternative: string;
+}
+
 export interface DebriefResponse {
-  narrative: string;
+  summary: string;
+  turnCritiques: DebriefTurnCritique[];
+  closingFocus: string;
   modelUsed: string;
 }
 
@@ -105,16 +173,56 @@ Write the debrief now. Reference trust movements when they point at specific beh
 
   const result = await client.messages.create({
     model: DEBRIEF_MODEL,
-    max_tokens: 1500,
+    max_tokens: 2048,
     system,
+    tools: [DEBRIEF_TOOL],
+    tool_choice: { type: 'tool', name: TOOL_NAME },
     messages: [{ role: 'user', content: user }],
   });
 
-  const narrative = result.content
-    .filter((block): block is Anthropic.TextBlock => block.type === 'text')
-    .map((block) => block.text)
-    .join('\n')
-    .trim();
+  const toolBlock = result.content.find(
+    (block): block is Anthropic.ToolUseBlock =>
+      block.type === 'tool_use' && block.name === TOOL_NAME,
+  );
+  if (!toolBlock) {
+    throw new Error('debrief tool call missing from response');
+  }
+  const parsed = parseDebriefToolInput(toolBlock.input);
+  if (!parsed) {
+    console.error('[debrief] tool input rejected:', JSON.stringify(toolBlock.input));
+    throw new Error('debrief tool input did not match contract');
+  }
 
-  return { narrative, modelUsed: result.model };
+  return { ...parsed, modelUsed: result.model };
+}
+
+function parseDebriefToolInput(
+  input: unknown,
+): Omit<DebriefResponse, 'modelUsed'> | null {
+  if (!input || typeof input !== 'object') return null;
+  const obj = input as Record<string, unknown>;
+
+  const summary = typeof obj.summary === 'string' ? obj.summary.trim() : '';
+  const closingFocus =
+    typeof obj.closing_focus === 'string' ? obj.closing_focus.trim() : '';
+  const rawCritiques = Array.isArray(obj.turn_critiques) ? obj.turn_critiques : [];
+
+  if (!summary || !closingFocus || rawCritiques.length === 0) return null;
+
+  const turnCritiques: DebriefTurnCritique[] = [];
+  for (const c of rawCritiques) {
+    if (!c || typeof c !== 'object') continue;
+    const rec = c as Record<string, unknown>;
+    const turn = typeof rec.turn === 'number' ? rec.turn : Number(rec.turn);
+    const headline = typeof rec.headline === 'string' ? rec.headline.trim() : '';
+    const what_they_did =
+      typeof rec.what_they_did === 'string' ? rec.what_they_did.trim() : '';
+    const alternative =
+      typeof rec.alternative === 'string' ? rec.alternative.trim() : '';
+    if (!Number.isFinite(turn) || !headline || !what_they_did || !alternative) continue;
+    turnCritiques.push({ turn, headline, what_they_did, alternative });
+  }
+
+  if (turnCritiques.length === 0) return null;
+  return { summary, turnCritiques, closingFocus };
 }

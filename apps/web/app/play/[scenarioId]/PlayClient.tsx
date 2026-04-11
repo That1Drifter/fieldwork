@@ -14,6 +14,7 @@ interface Objective {
   id: string;
   desc: string;
   required?: boolean;
+  discoverable?: boolean;
 }
 
 interface Scenario {
@@ -94,6 +95,20 @@ interface TurnMeta {
   firedSurprises: string[];
 }
 
+interface DebriefTurnCritique {
+  turn: number;
+  headline: string;
+  what_they_did: string;
+  alternative: string;
+}
+
+interface DebriefData {
+  summary: string;
+  turnCritiques: DebriefTurnCritique[];
+  closingFocus: string;
+  modelUsed: string;
+}
+
 export function PlayClient({ scenarioId }: { scenarioId: string }) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [scenario, setScenario] = useState<Scenario | null>(null);
@@ -108,7 +123,7 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
   const [loadingLabel, setLoadingLabel] = useState<string>('Running turn');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [debrief, setDebrief] = useState<string | null>(null);
+  const [debrief, setDebrief] = useState<DebriefData | null>(null);
   const [turnBudget, setTurnBudget] = useState<number | null>(null);
   const [cumulativeCost, setCumulativeCost] = useState<number>(0);
   const [flashingObjectives, setFlashingObjectives] = useState<Set<string>>(new Set());
@@ -259,7 +274,7 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
         setError(data.error ?? `debrief failed: ${res.status}`);
         return;
       }
-      setDebrief(data.narrative);
+      setDebrief(data as DebriefData);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -497,18 +512,100 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
             </div>
           )}
           {debrief && (
-            <>
-              <div className="mt-4 whitespace-pre-wrap rounded border border-blue-900 bg-blue-950/30 p-3 text-base text-blue-100" data-testid="debrief-output">
-                {debrief}
+            <div className="mt-4 space-y-4" data-testid="debrief-output">
+              <div
+                className="rounded border border-blue-700 bg-blue-950/40 p-4 text-base text-blue-50"
+                data-testid="debrief-summary"
+              >
+                <div className="mb-1 text-xs uppercase tracking-wider text-blue-300">
+                  Summary
+                </div>
+                {debrief.summary}
               </div>
+
+              <div data-testid="debrief-objectives">
+                <div className="mb-2 text-xs uppercase tracking-wider text-neutral-500">
+                  Objectives
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {scenario.objectives.map((o) => {
+                    const finalState = state.objectives[o.id] ?? 'open';
+                    const discovered = (state.discoveredObjectives ?? []).includes(o.id);
+                    const neverDiscovered = o.discoverable && !discovered;
+                    const cls = neverDiscovered
+                      ? 'border-dashed border-neutral-700 bg-neutral-900 text-neutral-500'
+                      : finalState === 'met'
+                        ? 'border-green-700 bg-green-950/40 text-green-300'
+                        : finalState === 'failed'
+                          ? 'border-red-800 bg-red-950/40 text-red-300'
+                          : finalState === 'attempted'
+                            ? 'border-amber-800 bg-amber-950/30 text-amber-300'
+                            : 'border-neutral-800 bg-neutral-900 text-neutral-500';
+                    const label = neverDiscovered ? 'never discovered' : finalState;
+                    return (
+                      <span
+                        key={o.id}
+                        className={`inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm ${cls}`}
+                        data-testid={`debrief-objective-${o.id}`}
+                        title={o.desc}
+                      >
+                        <span className="font-medium">{o.id}</span>
+                        <span className="text-xs uppercase tracking-wider opacity-80">
+                          {label}
+                        </span>
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-4" data-testid="debrief-critiques">
+                {debrief.turnCritiques.map((c) => (
+                  <div
+                    key={`${c.turn}-${c.headline}`}
+                    className="rounded border border-neutral-800 bg-neutral-950 p-3"
+                    data-testid={`debrief-turn-${c.turn}`}
+                  >
+                    <h3 className="mb-2 text-base font-semibold text-neutral-100">
+                      <span className="mr-2 inline-block rounded bg-blue-900/60 px-1.5 py-0.5 text-xs font-medium uppercase tracking-wider text-blue-200">
+                        Turn {c.turn}
+                      </span>
+                      {c.headline}
+                    </h3>
+                    <p className="mb-2 text-sm text-neutral-300">
+                      <span className="text-xs uppercase tracking-wider text-neutral-500">
+                        What you did ·{' '}
+                      </span>
+                      {c.what_they_did}
+                    </p>
+                    <p className="text-sm text-neutral-300">
+                      <span className="text-xs uppercase tracking-wider text-green-500">
+                        Try instead ·{' '}
+                      </span>
+                      {c.alternative}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div
+                className="rounded border border-amber-800 bg-amber-950/30 p-3 text-base text-amber-100"
+                data-testid="debrief-focus"
+              >
+                <div className="mb-1 text-xs uppercase tracking-wider text-amber-400">
+                  Focus next time
+                </div>
+                {debrief.closingFocus}
+              </div>
+
               <Link
                 href="/"
-                className="mt-3 inline-block rounded border border-blue-900 bg-blue-950/30 px-3 py-1.5 text-sm text-blue-200 transition-colors hover:border-blue-700 hover:bg-blue-900/40 focus-visible:border-blue-700 focus-visible:outline-none"
+                className="inline-block rounded border border-blue-900 bg-blue-950/30 px-3 py-1.5 text-sm text-blue-200 transition-colors hover:border-blue-700 hover:bg-blue-900/40 focus-visible:border-blue-700 focus-visible:outline-none"
                 data-testid="pick-another-scenario"
               >
                 Pick another scenario →
               </Link>
-            </>
+            </div>
           )}
         </section>
 

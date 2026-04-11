@@ -24,13 +24,6 @@ Durable, cross-session list of remaining work. Ordered by leverage.
 
 ## Polish / nice-to-haves
 
-- [ ] **Debrief visual structure.** The debrief is the strongest part of
-      the product (specific, turn-referenced, concrete alternatives) but
-      it's rendered as 6 dense paragraphs of prose with no headers, no
-      per-turn anchors, no objective badges. Quote from the fresh-eyes
-      run: *"the current presentation undersells the quality of the
-      critique."* Add H3 per turn, colored objective badges, a top-line
-      summary callout. Highest-leverage polish item.
 - [ ] **Trust delta indicators.** Trust bars in the briefing panel show
       only the current value. Add a delta-since-last-turn (e.g.
       `0.55 ↓ from 0.58`) or a small sparkline so trainees can connect
@@ -122,6 +115,14 @@ re-open them.
       via new GET `/api/session/[id]`, fall back to fresh start on 404.
       Shipped in PR #17. Verified by v2 fresh-eyes playthrough: mid-scenario
       reload preserved turn counter, cost, trust, objectives, inbox.
+- [x] **Debrief visual structure** — switched the debrief Sonnet call to
+      tool use with a structured shape (`summary`, `turn_critiques[]`,
+      `closing_focus`) and rebuilt the renderer with a top-line summary
+      callout, an objective-pill row derived from session state
+      (green/red/amber/dashed-gray for met/failed/attempted/never-discovered),
+      H3 turn-headlines with "What you did" / "Try instead" sections,
+      and a closing-focus callout. Verified end-to-end via Playwright
+      with a mocked API response.
 - [x] **Turn-loading spinner + elapsed-time ticker** — work area now
       shows an animated spinner with a live "Running turn… 1.5s" ticker
       while a turn or debrief is in flight, so the UI no longer looks
