@@ -4,13 +4,15 @@ Durable, cross-session list of remaining work. Ordered by leverage.
 
 ## Engine
 
-- [ ] **Inner Claude streaming** — turn responses currently block the UI for
-      5-15s with a static work area. No spinner, no progress, no elapsed
-      time — a real user thinks it crashed and clicks again. The fresh-eyes
-      run flagged this as a real friction point. Stream the JSON delta so
-      `visible_effects` appears as it generates. If streaming is too big a
-      lift, at minimum add a spinner + elapsed-time indicator as a stopgap.
-      Hits every turn, biggest perceived-perf win.
+- [ ] **Inner Claude streaming** — full SSE streaming of `visible_effects`
+      as the tool input generates is still the win. Stopgap (spinner +
+      elapsed-time ticker) is shipped, so the UI no longer feels frozen,
+      but a real stream would let the trainee start reading the narrative
+      mid-flight instead of waiting 5-15s for the full response. Requires
+      switching to `client.messages.stream`, buffering `input_json_delta`
+      events on the tool_use block, and either parsing partial JSON
+      server-side or streaming a sentinel-delimited prose channel
+      separate from the structured tool input.
 - [ ] **Action log server-side summarization** — the action log grows without
       bound; past ~20 turns it bloats the prompt. Theoretical today (every
       shipped scenario has `turn_budget` ≤ 15) but becomes real the moment
@@ -120,6 +122,11 @@ re-open them.
       via new GET `/api/session/[id]`, fall back to fresh start on 404.
       Shipped in PR #17. Verified by v2 fresh-eyes playthrough: mid-scenario
       reload preserved turn counter, cost, trust, objectives, inbox.
+- [x] **Turn-loading spinner + elapsed-time ticker** — work area now
+      shows an animated spinner with a live "Running turn… 1.5s" ticker
+      while a turn or debrief is in flight, so the UI no longer looks
+      frozen during the 5-15s API round-trip. Stopgap for full streaming;
+      verified end-to-end via Playwright with a slowed fetch.
 - [x] **`retried` badge tooltip** — wraps the badge in a span with a
       `title` attribute and dotted underline so a curious user gets
       "engine retried internally for a clean response — no action

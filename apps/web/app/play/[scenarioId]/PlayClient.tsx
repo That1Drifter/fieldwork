@@ -105,6 +105,8 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
   const [lastMeta, setLastMeta] = useState<TurnMeta | null>(null);
   const [logOpen, setLogOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadingLabel, setLoadingLabel] = useState<string>('Running turn');
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [debrief, setDebrief] = useState<string | null>(null);
   const [turnBudget, setTurnBudget] = useState<number | null>(null);
@@ -175,6 +177,19 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
     }
   }, [restoreSession, startSession]);
 
+  // Tick elapsed time while a turn or debrief is in flight so the user sees
+  // visible progress instead of a frozen UI. Resets to 0 on every load start.
+  useEffect(() => {
+    if (!loading) {
+      setElapsedMs(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setElapsedMs(0);
+    const id = setInterval(() => setElapsedMs(Date.now() - startedAt), 100);
+    return () => clearInterval(id);
+  }, [loading]);
+
   // Keep ?session=<id> in the URL in sync with the active sessionId so a
   // page reload (or shared link) restores the same session instead of
   // silently starting a new one.
@@ -188,6 +203,7 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
 
   const runTurn = async () => {
     if (!sessionId || !prompt.trim() || loading) return;
+    setLoadingLabel('Running turn');
     setLoading(true);
     setError(null);
     try {
@@ -229,6 +245,7 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
 
   const runDebrief = async () => {
     if (!sessionId || loading) return;
+    setLoadingLabel('Generating debrief');
     setLoading(true);
     setError(null);
     try {
@@ -435,7 +452,26 @@ export function PlayClient({ scenarioId }: { scenarioId: string }) {
               debrief
             </button>
           </div>
-          {lastEffects && (
+          {loading && (
+            <div
+              className="mt-4 flex items-center gap-3 rounded border border-neutral-800 bg-neutral-950 p-3 text-base text-neutral-400"
+              data-testid="turn-loading"
+              role="status"
+              aria-live="polite"
+            >
+              <span
+                className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-neutral-700 border-t-neutral-300"
+                aria-hidden="true"
+              />
+              <span>
+                {loadingLabel}…{' '}
+                <span className="tabular-nums text-neutral-500" data-testid="turn-elapsed">
+                  {(elapsedMs / 1000).toFixed(1)}s
+                </span>
+              </span>
+            </div>
+          )}
+          {!loading && lastEffects && (
             <div className="mt-4 rounded border border-neutral-800 bg-neutral-950 p-3 text-base text-neutral-300" data-testid="visible-effects">
               {lastEffects}
               {lastMeta && (
